@@ -508,12 +508,15 @@ async fn spawn_and_stream(
         None => None,
     }));
 
-    let mut child = Command::new(java)
-        .args(&args)
+    let mut cmd = Command::new(java);
+    cmd.args(&args)
         .current_dir(&cwd)
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()?;
+        .stderr(std::process::Stdio::piped());
+    // Windows: never flash a console window for the game process either (javaw is GUI, but be explicit).
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x0800_0000);
+    let mut child = cmd.spawn()?;
     let pid = child.id().unwrap_or(0);
     let stdout = child.stdout.take().ok_or_else(|| AppError::msg("no stdout"))?;
     let stderr = child.stderr.take().ok_or_else(|| AppError::msg("no stderr"))?;

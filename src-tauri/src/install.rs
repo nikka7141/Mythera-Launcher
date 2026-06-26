@@ -260,12 +260,16 @@ async fn fetch_forge_installer(
 async fn run_process(exe: &str, args: &[String], cwd: &Path, on_log: Log<'_>) -> AppResult<()> {
     use tokio::io::{AsyncBufReadExt, BufReader};
     use tokio::process::Command;
-    let mut child = Command::new(exe)
-        .args(args)
+    let mut cmd = Command::new(exe);
+    cmd.args(args)
         .current_dir(cwd)
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()?;
+        .stderr(std::process::Stdio::piped());
+    // Windows: java.exe is a console app — without this it pops a black terminal window the user can
+    // close mid-install (breaking the Forge/Java setup). CREATE_NO_WINDOW runs it fully in the background.
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x0800_0000);
+    let mut child = cmd.spawn()?;
     let stdout = child.stdout.take().ok_or_else(|| AppError::msg("no stdout"))?;
     let stderr = child.stderr.take().ok_or_else(|| AppError::msg("no stderr"))?;
     let mut out = BufReader::new(stdout).lines();
