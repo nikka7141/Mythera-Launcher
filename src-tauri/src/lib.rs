@@ -59,6 +59,7 @@ pub fn run() {
                 user_data,
                 running: Mutex::new(None),
                 cancel: Mutex::new(HashSet::new()),
+                updating: std::sync::atomic::AtomicBool::new(false),
             });
             Ok(())
         })

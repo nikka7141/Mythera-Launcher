@@ -377,10 +377,13 @@ pub fn save_settings(state: State<'_, AppState>, settings: store::Settings) -> A
     Ok(serde_json::to_value(settings)?)
 }
 
-/// Native folder picker for the game directory. Returns None until the dialog plugin is wired in.
+/// Native OS folder picker for the game directory. Returns the chosen path, or None if cancelled.
 #[tauri::command]
 pub fn browse_game_dir() -> Option<String> {
-    None
+    rfd::FileDialog::new()
+        .set_title("Choose the Mythera game folder")
+        .pick_folder()
+        .map(|p| p.to_string_lossy().into_owned())
 }
 
 // ---------- self-update + version gating ----------
@@ -404,7 +407,22 @@ pub async fn update_status(app: AppHandle, state: State<'_, AppState>) -> AppRes
 
 #[tauri::command]
 pub async fn update_now(app: AppHandle, state: State<'_, AppState>) -> AppResult<Value> {
-    let info = fetch_version_info(state.inner()).await?;
+    use std::sync::atomic::Ordering;
+    // Re-entrancy guard: a double-click / relaunch must not start a second download to the same temp dir.
+    if state
+        .updating
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return Err(AppError::msg("An update is already in progress."));
+    }
+    let info = match fetch_version_info(state.inner()).await {
+        Ok(i) => i,
+        Err(e) => {
+            state.updating.store(false, Ordering::SeqCst);
+            return Err(e);
+        }
+    };
     let http = state.http.clone();
     let dir = std::env::temp_dir().join("mythera-update");
     let app2 = app.clone();
@@ -413,14 +431,22 @@ pub async fn update_now(app: AppHandle, state: State<'_, AppState>) -> AppResult
         let on_progress = move |pct: u8| {
             let _ = app_p.emit("mc:update-progress", json!({ "percent": pct }));
         };
+        // Clear the guard on any failure so the user can retry; on success the app exits before this.
+        let clear = |h: &AppHandle| {
+            if let Some(st) = h.try_state::<AppState>() {
+                st.updating.store(false, Ordering::SeqCst);
+            }
+        };
         match updater::download_installer(&http, &info, &dir, &on_progress).await {
             Ok(path) => match updater::run_installer(&path) {
                 Ok(_) => app2.exit(0),
                 Err(e) => {
+                    clear(&app2);
                     let _ = app2.emit("mc:update-error", json!({ "message": e.to_string() }));
                 }
             },
             Err(e) => {
+                clear(&app2);
                 let _ = app2.emit("mc:update-error", json!({ "message": e.to_string() }));
             }
         }

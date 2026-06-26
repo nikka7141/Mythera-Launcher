@@ -42,9 +42,12 @@ fn os_ext() -> &'static str {
     }
 }
 
-/// Resolve the installer URL for the CURRENT OS: prefer the backend-provided per-OS download URL
-/// (whitelist-aware), falling back to the legacy `<feedUrl>/Mythera-<latest>-<ext>` convention.
-pub fn installer_url(info: &VersionInfo) -> String {
+/// Resolve the installer URL for the CURRENT OS from the backend-provided per-OS download URL
+/// (whitelist-aware). The backend is the single source of truth for the artifact filename — we must NOT
+/// invent one. The real Tauri/NSIS artifact is `Mythera_<latest>_x64-setup.exe` (underscores), not a
+/// guessable dashed name, so a constructed URL would 404. If no download is published for this OS,
+/// surface a clear error instead.
+pub fn installer_url(info: &VersionInfo) -> AppResult<String> {
     let provided = if cfg!(target_os = "windows") {
         info.downloads.windows.as_ref()
     } else if cfg!(target_os = "macos") {
@@ -52,17 +55,11 @@ pub fn installer_url(info: &VersionInfo) -> String {
     } else {
         info.downloads.linux.as_ref()
     };
-    if let Some(u) = provided {
-        if !u.is_empty() {
-            return u.clone();
-        }
-    }
-    let base = info.feed_url.trim_end_matches('/');
-    let ext = os_ext();
-    if cfg!(target_os = "windows") {
-        format!("{base}/Mythera-{}-{ext}", info.latest)
-    } else {
-        format!("{base}/Mythera-{}.{ext}", info.latest)
+    match provided {
+        Some(u) if !u.is_empty() => Ok(u.clone()),
+        _ => Err(AppError::msg(
+            "No update is available for your operating system yet. Please try again later or download the latest version manually.",
+        )),
     }
 }
 
@@ -97,19 +94,37 @@ pub async fn download_installer(
     dir: &Path,
     on_progress: &(dyn Fn(u8) + Send + Sync),
 ) -> AppResult<PathBuf> {
-    let url = installer_url(info);
+    let url = installer_url(info)?;
     let res = http.get(&url).send().await?;
     if !res.status().is_success() {
         return Err(AppError::msg(format!("Update download failed ({})", res.status().as_u16())));
     }
     let total = res.content_length().unwrap_or(0);
-    tokio::fs::create_dir_all(dir).await?;
+    // Download into a UNIQUE per-run subdir (pid + timestamp) so a previous, possibly still file-locked,
+    // installer at the old FIXED path can't collide with this one — that collision was the Windows
+    // os error 32 (sharing violation) on File::create.
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let run_dir = dir.join(format!("{}-{}", std::process::id(), ts));
+    tokio::fs::create_dir_all(&run_dir).await?;
     // Keep the artifact's real filename (its extension drives how we run it per OS).
     let name = url.rsplit('/').next().unwrap_or("").trim();
     let name = if name.is_empty() { format!("Mythera-{}.{}", info.latest, os_ext()) } else { name.to_string() };
-    let dest = dir.join(name);
+    let dest = run_dir.join(name);
 
-    let mut file = tokio::fs::File::create(&dest).await?;
+    // Best-effort: clear any stale file at this exact path before (re)creating it.
+    let _ = tokio::fs::remove_file(&dest).await;
+    let mut file = match tokio::fs::File::create(&dest).await {
+        Ok(f) => f,
+        Err(e) if e.raw_os_error() == Some(32) => {
+            return Err(AppError::msg(
+                "Couldn't write the update because the file is in use. Close any running Mythera installer and try again.",
+            ));
+        }
+        Err(e) => return Err(AppError::from(e)),
+    };
     let mut downloaded: u64 = 0;
     let mut last_pct: u8 = 0;
     let mut stream = res.bytes_stream();
@@ -173,7 +188,7 @@ mod tests {
             mac: Some("https://cdn/x/app.dmg".into()),
             linux: Some("https://cdn/x/app.AppImage".into()),
         };
-        let url = installer_url(&info(d));
+        let url = installer_url(&info(d)).unwrap();
         // The host OS's provided URL is used verbatim.
         let expected = if cfg!(target_os = "windows") {
             "https://cdn/x/win.exe"
@@ -186,22 +201,15 @@ mod tests {
     }
 
     #[test]
-    fn falls_back_to_feed_convention_with_correct_extension() {
-        let url = installer_url(&info(Downloads::default()));
-        assert!(url.starts_with("https://api.mythera.ge/cdn/launcher/Mythera-1.2.3"));
-        if cfg!(target_os = "windows") {
-            assert!(url.ends_with("Mythera-1.2.3-setup.exe"));
-        } else if cfg!(target_os = "macos") {
-            assert!(url.ends_with("Mythera-1.2.3.dmg"));
-        } else {
-            assert!(url.ends_with("Mythera-1.2.3.AppImage"));
-        }
+    fn errors_when_no_download_for_this_os() {
+        // The backend owns the artifact filename; we must NOT invent one (a guessed name 404s), so a
+        // payload with no per-OS download must be an error rather than a fabricated URL.
+        assert!(installer_url(&info(Downloads::default())).is_err());
     }
 
     #[test]
-    fn empty_provided_url_falls_back() {
+    fn errors_when_provided_url_is_empty() {
         let d = Downloads { windows: Some("".into()), mac: Some("".into()), linux: Some("".into()) };
-        let url = installer_url(&info(d));
-        assert!(url.contains("Mythera-1.2.3"));
+        assert!(installer_url(&info(d)).is_err());
     }
 }

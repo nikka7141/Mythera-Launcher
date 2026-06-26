@@ -1,6 +1,6 @@
 [package]
 name = "mythera-launcher"
-version = "1.0.8"
+version = "1.0.9"
 description = "Mythera Minecraft Launcher"
 authors = ["Mythera"]
 edition = "2021"
@@ -29,6 +29,9 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 # apple-native / sync-secret-service when building mac/linux.
 keyring = { version = "3", features = ["windows-native"] }
 thiserror = "2"
+# Native folder picker for the Settings "Browse" button (game directory). default-features=false avoids
+# pulling an async runtime / the Linux GTK backend — the Windows native dialog is always compiled.
+rfd = { version = "0.15", default-features = false }
 
 # Smaller release binary -> smaller installer. LTO + size-opt + strip symbols. (panic=abort is omitted
 # so `cargo test --release` keeps the unwinding the test harness needs.)

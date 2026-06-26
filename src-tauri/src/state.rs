@@ -3,6 +3,7 @@
 
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
 
 pub struct AppState {
@@ -17,6 +18,9 @@ pub struct AppState {
     pub running: Mutex<Option<i64>>,
     /// server_ids whose in-flight install/sync should abort at the next file (set by cancel_sync).
     pub cancel: Mutex<HashSet<i64>>,
+    /// Set while a self-update download/install is in flight, so a double-click / relaunch can't start a
+    /// second download to the same temp path (re-entrancy guard for `update_now`).
+    pub updating: AtomicBool,
 }
 
 impl AppState {

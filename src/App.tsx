@@ -213,7 +213,7 @@ export default function App() {
     try {
       await afterAuth(await mc.login({ username, password }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      setError(err instanceof Error ? err.message : typeof err === 'string' ? err : 'Login failed');
     }
   }
 
@@ -235,7 +235,7 @@ export default function App() {
     try {
       await afterAuth(await mc.register({ username, password }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Registration failed');
+      setError(err instanceof Error ? err.message : typeof err === 'string' ? err : 'Registration failed');
     }
   }
 
@@ -262,7 +262,7 @@ export default function App() {
       setRecAccounts(res.accounts.map((a) => a.username));
       setRecStep('pick');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Lookup failed');
+      setError(err instanceof Error ? err.message : typeof err === 'string' ? err : 'Lookup failed');
     }
   }
 
@@ -282,7 +282,7 @@ export default function App() {
       await mc.recoverReset({ username: recPicked, newPassword: password });
       setRecStep('done');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Reset failed');
+      setError(err instanceof Error ? err.message : typeof err === 'string' ? err : 'Reset failed');
     }
   }
 
@@ -304,7 +304,7 @@ export default function App() {
       setSelected((cur) => (cur != null && list.some((s) => s.id === cur) ? cur : list[0]?.id ?? null));
       refreshMeta(list);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Refresh failed');
+      setError(err instanceof Error ? err.message : typeof err === 'string' ? err : 'Refresh failed');
     } finally {
       setRefreshing(false);
     }
@@ -344,14 +344,22 @@ export default function App() {
     setSettings((cur) => {
       if (!cur) return cur;
       const next = { ...cur, ...patch };
-      void mc.saveSettings(next).catch(() => undefined);
+      // Persist; surface a real failure instead of silently swallowing it (so a broken save is visible).
+      void mc.saveSettings(next).catch((e) =>
+        setError(e instanceof Error ? e.message : typeof e === 'string' ? e : 'Could not save settings'),
+      );
       return next;
     });
   }
 
   async function browseGameDir() {
-    const dir = await mc.browseGameDir().catch(() => null);
-    if (dir) updateSettings({ gameDir: dir });
+    setError('');
+    try {
+      const dir = await mc.browseGameDir();
+      if (dir) updateSettings({ gameDir: dir });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : typeof e === 'string' ? e : 'Could not open the folder picker');
+    }
   }
 
   // Validate + upload a Minecraft skin (same rules the backend enforces: PNG, 64×64 or 64×32, ≤256 KB).
@@ -382,7 +390,7 @@ export default function App() {
       setUser(await mc.refreshUser());
       setSkinMsg('Skin updated — applied in-game on your next join.');
     } catch (e) {
-      setSkinErr(e instanceof Error ? e.message : 'Skin upload failed.');
+      setSkinErr(e instanceof Error ? e.message : typeof e === 'string' ? e : 'Skin upload failed.');
     } finally {
       setSkinBusy(false);
     }
@@ -395,7 +403,7 @@ export default function App() {
     try {
       await mc.updateNow();
     } catch (err) {
-      setUpdErr(err instanceof Error ? err.message : 'Update failed');
+      setUpdErr(err instanceof Error ? err.message : typeof err === 'string' ? err : 'Update failed');
       setUpdating(false);
     }
   }
@@ -406,7 +414,7 @@ export default function App() {
     if (canceledRef.current.delete(id)) {
       setSrvStatus(id, 'Canceled.');
     } else {
-      setError(err instanceof Error ? err.message : fallback);
+      setError(err instanceof Error ? err.message : typeof err === 'string' ? err : fallback);
       setSrvStatus(id, '');
     }
   }
