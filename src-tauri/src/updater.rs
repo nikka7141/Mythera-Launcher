@@ -55,11 +55,21 @@ pub fn installer_url(info: &VersionInfo) -> AppResult<String> {
     } else {
         info.downloads.linux.as_ref()
     };
-    match provided {
-        Some(u) if !u.is_empty() => Ok(u.clone()),
-        _ => Err(AppError::msg(
+    if let Some(u) = provided {
+        if !u.is_empty() {
+            return Ok(u.clone());
+        }
+    }
+    // The backend didn't hand us a per-OS URL (e.g. the published version is flagged restricted/locked,
+    // which blanks `downloads`). Fall back to the published feed artifact by its REAL Tauri/NSIS name —
+    // the Windows installer the CI ships is `Mythera_<version>_x64-setup.exe` (matches latest.yml `path`).
+    let base = info.feed_url.trim_end_matches('/');
+    if cfg!(target_os = "windows") {
+        Ok(format!("{base}/Mythera_{}_x64-setup.exe", info.latest))
+    } else {
+        Err(AppError::msg(
             "No update is available for your operating system yet. Please try again later or download the latest version manually.",
-        )),
+        ))
     }
 }
 
@@ -151,7 +161,14 @@ pub async fn download_installer(
 pub fn run_installer(path: &Path) -> AppResult<()> {
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new(path).spawn().map_err(AppError::from)?;
+        use std::os::windows::process::CommandExt;
+        // /S = NSIS silent install (runs in the background, no setup wizard to click through);
+        // CREATE_NO_WINDOW = no console flash. The app exits right after, then the user reopens the new build.
+        std::process::Command::new(path)
+            .arg("/S")
+            .creation_flags(0x0800_0000)
+            .spawn()
+            .map_err(AppError::from)?;
     }
     #[cfg(target_os = "linux")]
     {
@@ -201,15 +218,25 @@ mod tests {
     }
 
     #[test]
-    fn errors_when_no_download_for_this_os() {
-        // The backend owns the artifact filename; we must NOT invent one (a guessed name 404s), so a
-        // payload with no per-OS download must be an error rather than a fabricated URL.
-        assert!(installer_url(&info(Downloads::default())).is_err());
+    fn falls_back_to_feed_artifact_when_no_download() {
+        // No per-OS download from the backend (restricted/locked) → on Windows we fall back to the real
+        // published artifact name; other OSes (no CI build) surface a clear error.
+        let url = installer_url(&info(Downloads::default()));
+        if cfg!(target_os = "windows") {
+            assert!(url.unwrap().ends_with("Mythera_1.2.3_x64-setup.exe"));
+        } else {
+            assert!(url.is_err());
+        }
     }
 
     #[test]
-    fn errors_when_provided_url_is_empty() {
+    fn falls_back_when_provided_url_is_empty() {
         let d = Downloads { windows: Some("".into()), mac: Some("".into()), linux: Some("".into()) };
-        assert!(installer_url(&info(d)).is_err());
+        let url = installer_url(&info(d));
+        if cfg!(target_os = "windows") {
+            assert!(url.unwrap().contains("Mythera_1.2.3"));
+        } else {
+            assert!(url.is_err());
+        }
     }
 }
