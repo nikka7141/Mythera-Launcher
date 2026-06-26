@@ -1,0 +1,21 @@
+# dependencies / build output
+node_modules/
+dist/
+.turbo/
+*.tsbuildinfo
+
+# rust / tauri
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# env — .env.production is intentionally committed (public URLs only).
+# Real secrets must never be committed:
+.env
+.env.local
+.env.*.local
+
+# editor / os
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
