@@ -31,12 +31,16 @@ pub struct SyncResult {
     pub unchanged: usize,
 }
 
-// Only these dirs are managed by sync — MOD JARS only. config/ (mod .toml/.json) and resourcepacks/ are
-// deliberately NOT synced: the client generates its own mod configs, so syncing them would pull
-// server-side configs the player never asked for AND prune the player's locally-generated ones every
-// launch (which also caused the recurring config "Checksum mismatch"). The base client (versions/,
-// libraries/, assets/, version.json) lives in the same instance and must NEVER be deleted as "extra".
+// Mod jars are DELTA-synced + pruned. config/ is handled separately (force-overwritten, never pruned —
+// see CONFIG_DIRS). resourcepacks/ stays excluded. The base client (versions/, libraries/, assets/,
+// version.json) lives in the same instance and must NEVER be deleted as "extra".
 const MANAGED_DIRS: [&str; 2] = ["mods", "coremods"];
+
+// Admin-published configs: the SERVER's copy is the source of truth. We FORCE-overwrite these on every
+// launch (no sha verify — a mod-rewritten .properties/.toml/.json with a timestamp header would otherwise
+// "Checksum mismatch") and NEVER prune unpublished local configs (a mod still generates its own). This
+// lets the owner lock server configs the player must not change, with no client⇄server mismatch.
+const CONFIG_DIRS: [&str; 1] = ["config"];
 
 /// Top path segment of a manifest relPath ("config/foo.toml" -> "config"), separator-agnostic.
 fn top_seg(rel: &str) -> &str {
@@ -102,7 +106,7 @@ fn safe_dest(dir: &Path, rel: &str) -> AppResult<PathBuf> {
     let norm = rel.replace('\\', "/");
     let trimmed = norm.trim_start_matches('/');
     let top = trimmed.split('/').next().unwrap_or("");
-    if !MANAGED_DIRS.contains(&top) {
+    if !MANAGED_DIRS.contains(&top) && !CONFIG_DIRS.contains(&top) {
         return Err(AppError::msg(format!("Refusing file outside managed dirs: {rel}")));
     }
     // Reject `..` / empty / absolute segments — a hostile manifest must not escape the instance dir.
@@ -158,6 +162,36 @@ pub async fn sync_server(
         if let Ok(dest) = safe_dest(dir, rel) {
             let _ = tokio::fs::remove_file(&dest).await;
         }
+    }
+
+    // Force-apply admin-published configs from the server on EVERY launch (prepare_instance → sync_server
+    // runs each play). Best-effort + sha-free: a config fetch failure or a churning timestamp must never
+    // block the launch or throw a "Checksum mismatch". Unpublished local configs are left untouched.
+    let configs: Vec<&ManifestFile> = manifest
+        .iter()
+        .filter(|f| CONFIG_DIRS.contains(&top_seg(&f.rel_path)))
+        .collect();
+    for (i, f) in configs.iter().enumerate() {
+        if is_canceled() {
+            return Err(AppError::msg("canceled"));
+        }
+        let dest = match safe_dest(dir, &f.rel_path) {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+        on_progress(SyncProgress::new("config", Some(f.rel_path.clone()), i, configs.len()));
+        let res = match http.get(&f.cdn_url).send().await {
+            Ok(r) if r.status().is_success() => r,
+            _ => continue, // best-effort
+        };
+        let buf = match res.bytes().await {
+            Ok(b) => b.to_vec(),
+            Err(_) => continue,
+        };
+        if let Some(parent) = dest.parent() {
+            let _ = tokio::fs::create_dir_all(parent).await;
+        }
+        let _ = tokio::fs::write(&dest, &buf).await;
     }
 
     on_progress(SyncProgress::new("done", None, done, total));
