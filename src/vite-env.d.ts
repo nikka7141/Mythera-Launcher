@@ -50,6 +50,8 @@ declare global {
 
   interface McServerStatus {
     running: boolean;
+    // Transient: the server was just (re)started and isn't answering yet → show "Restarting…".
+    restarting?: boolean;
     online: number;
     max: number;
     // Sample of online players from the SLP response — present only when the server advertises one.

@@ -177,6 +177,9 @@ input:focus {
 .dot.off {
   background: rgba(255, 255, 255, 0.28);
 }
+.dot.warn {
+  background: #e2b340;
+}
 
 /* progress bar */
 .pbar {

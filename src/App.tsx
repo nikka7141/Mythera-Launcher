@@ -690,6 +690,7 @@ export default function App() {
   const sel = servers.find((s) => s.id === selected) ?? null;
   const selStatus = sel ? statuses[sel.id] : undefined;
   const selOffline = selStatus?.running === false; // soft hint only — the ping can be a false negative, so this never blocks Play
+  const selRestarting = selStatus?.restarting === true; // just (re)started, not answering yet
   const selComingSoon = !!sel && sel.statusMode === 'featured';
   const selLocked = selComingSoon || (!!sel && sel.statusMode === 'in_development' && !sel.isWhitelisted);
   const selInstalled = sel ? installed[sel.id] : false;
@@ -1176,7 +1177,11 @@ export default function App() {
                   </>
                 ) : (
                   <span className="muted small players-empty">
-                    {selStatus?.running ? 'No player list advertised by this server.' : 'Server is offline.'}
+                    {selStatus?.running
+                      ? 'No player list advertised by this server.'
+                      : selStatus?.restarting
+                        ? 'Server is restarting…'
+                        : 'Server is offline.'}
                   </span>
                 )}
               </div>
@@ -1227,16 +1232,18 @@ export default function App() {
                     {sel.name} <span className="muted">({modeLabel(sel)})</span>
                   </h3>
                   <p className="lb-status">
-                    <span className={`dot${selStatus?.running ? ' on' : ' off'}`} />
+                    <span className={`dot${selStatus?.restarting ? ' warn' : selStatus?.running ? ' on' : ' off'}`} />
                     {selComingSoon
                       ? 'Coming soon — this server isn’t open yet.'
                       : selLocked
                         ? 'In development — only whitelisted players can join.'
                         : selRunning
                           ? 'Running — game launched.'
-                          : selInstalled && selOffline
-                            ? 'Server looks offline — you can still try to launch.'
-                            : selStatusMsg || (selInstalled ? 'Ready to play · All files up to date' : 'Not downloaded yet')}
+                          : selRestarting
+                            ? 'Restarting… — the server is coming back up.'
+                            : selInstalled && selOffline
+                              ? 'Server looks offline — you can still try to launch.'
+                              : selStatusMsg || (selInstalled ? 'Ready to play · All files up to date' : 'Not downloaded yet')}
                   </p>
                 </div>
               </div>
