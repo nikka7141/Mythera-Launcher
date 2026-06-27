@@ -31,9 +31,30 @@ pub struct SyncResult {
     pub unchanged: usize,
 }
 
-// Only these dirs are managed by sync — the base client (versions/, libraries/, assets/, version.json)
-// lives in the same instance and must NEVER be deleted as "extra".
-const MANAGED_DIRS: [&str; 4] = ["mods", "coremods", "config", "resourcepacks"];
+// Only these dirs are managed by sync — MOD JARS only. config/ (mod .toml/.json) and resourcepacks/ are
+// deliberately NOT synced: the client generates its own mod configs, so syncing them would pull
+// server-side configs the player never asked for AND prune the player's locally-generated ones every
+// launch (which also caused the recurring config "Checksum mismatch"). The base client (versions/,
+// libraries/, assets/, version.json) lives in the same instance and must NEVER be deleted as "extra".
+const MANAGED_DIRS: [&str; 2] = ["mods", "coremods"];
+
+/// Top path segment of a manifest relPath ("config/foo.toml" -> "config"), separator-agnostic.
+fn top_seg(rel: &str) -> &str {
+    rel.trim_start_matches(|c| c == '/' || c == '\\')
+        .split(|c| c == '/' || c == '\\')
+        .next()
+        .unwrap_or("")
+}
+
+/// Keep only manifest entries inside the managed (mod) dirs; everything else the backend still lists
+/// (server configs, resourcepacks) is ignored — neither downloaded nor used to prune local files.
+fn managed_only(manifest: &[ManifestFile]) -> Vec<ManifestFile> {
+    manifest
+        .iter()
+        .filter(|f| MANAGED_DIRS.contains(&top_seg(&f.rel_path)))
+        .cloned()
+        .collect()
+}
 
 fn sha256_bytes(buf: &[u8]) -> String {
     let mut h = Sha256::new();
@@ -102,7 +123,10 @@ pub async fn sync_server(
     on_progress(SyncProgress::new("scan", None, 0, 0));
 
     let local = scan_local(dir);
-    let plan = compute_sync_plan(manifest, &local);
+    // Sync mod jars only: drop any manifest entry outside the managed dirs (server-side config/.toml/
+    // .json, resourcepacks) so the client downloads ONLY mods and never prunes its own configs.
+    let wanted = managed_only(manifest);
+    let plan = compute_sync_plan(&wanted, &local);
 
     let total = plan.to_download.len();
     let mut done = 0usize;
@@ -142,4 +166,35 @@ pub async fn sync_server(
         deleted: plan.to_delete.len(),
         unchanged: plan.unchanged,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sync_plan::ManifestFile;
+
+    fn m(rel: &str) -> ManifestFile {
+        ManifestFile { rel_path: rel.into(), sha256: "x".into(), size_bytes: 1, cdn_url: "u".into() }
+    }
+
+    #[test]
+    fn top_seg_is_separator_agnostic() {
+        assert_eq!(top_seg("config/foo.toml"), "config");
+        assert_eq!(top_seg("mods\\a.jar"), "mods");
+        assert_eq!(top_seg("/mods/a.jar"), "mods");
+        assert_eq!(top_seg("a.jar"), "a.jar");
+    }
+
+    #[test]
+    fn managed_only_keeps_mods_drops_config_and_resourcepacks() {
+        let out = managed_only(&[
+            m("mods/a.jar"),
+            m("config/a.toml"),
+            m("config/sub/b.json"),
+            m("resourcepacks/p.zip"),
+            m("coremods/c.jar"),
+        ]);
+        let rels: Vec<_> = out.iter().map(|f| f.rel_path.clone()).collect();
+        assert_eq!(rels, vec!["mods/a.jar", "coremods/c.jar"]);
+    }
 }
