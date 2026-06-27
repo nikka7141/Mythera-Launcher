@@ -689,7 +689,7 @@ export default function App() {
 
   const sel = servers.find((s) => s.id === selected) ?? null;
   const selStatus = sel ? statuses[sel.id] : undefined;
-  const selOffline = selStatus?.running === false; // can't JOIN an offline server (Download still works — files are on the CDN)
+  const selOffline = selStatus?.running === false; // soft hint only — the ping can be a false negative, so this never blocks Play
   const selComingSoon = !!sel && sel.statusMode === 'featured';
   const selLocked = selComingSoon || (!!sel && sel.statusMode === 'in_development' && !sel.isWhitelisted);
   const selInstalled = sel ? installed[sel.id] : false;
@@ -699,20 +699,20 @@ export default function App() {
   const selStatusMsg = sel ? statusMap[sel.id] ?? '' : '';
   const selProgress = progress && sel && progress.serverId === sel.id ? progress : null;
   const pct = selProgress && selProgress.total > 0 ? Math.round((selProgress.done / selProgress.total) * 100) : null;
-  const ctaDisabled = busy !== null || otherRunning || selRunning || (selInstalled && selOffline);
+  const ctaDisabled = busy !== null || otherRunning || selRunning;
   // Secondary actions (reinstall/verify) must NOT run while THIS server's game holds file locks.
   const secondaryDisabled = busy !== null || selRunning;
   const onCta = () => sel && void (selInstalled ? play(sel.id) : download(sel.id));
-  // A single "can't play" state drives both the hero and the launch bar: coming-soon / in-dev / offline.
+  // Offline is a SOFT hint, never a hard block — the status ping can be a false negative (server up but
+  // slow to answer / Docker timing), so Play is never disabled on it. A genuinely offline server just
+  // fails to connect in-game. Only coming-soon / in-dev actually lock the button.
   const blocked: { kind: 'soon' | 'dev' | 'offline'; label: string } | null = !sel
     ? null
     : selComingSoon
       ? { kind: 'soon', label: 'Coming soon' }
       : sel.statusMode === 'in_development' && !sel.isWhitelisted
         ? { kind: 'dev', label: 'In development' }
-        : selInstalled && selOffline
-          ? { kind: 'offline', label: 'Offline' }
-          : null;
+        : null;
 
   const heroDesc = sel ? splitDescription(sel.description) : { tagline: '', body: '' };
   const [titleHead, titleTail] = sel ? splitTitle(sel.name) : ['', ''];
@@ -1235,7 +1235,7 @@ export default function App() {
                         : selRunning
                           ? 'Running — game launched.'
                           : selInstalled && selOffline
-                            ? 'Server is offline — you can’t join right now.'
+                            ? 'Server looks offline — you can still try to launch.'
                             : selStatusMsg || (selInstalled ? 'Ready to play · All files up to date' : 'Not downloaded yet')}
                   </p>
                 </div>
