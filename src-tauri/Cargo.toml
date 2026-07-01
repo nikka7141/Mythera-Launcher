@@ -1,6 +1,6 @@
 [package]
 name = "mythera-launcher"
-version = "1.0.17"
+version = "1.0.18"
 description = "Mythera Minecraft Launcher"
 authors = ["Mythera"]
 edition = "2021"
