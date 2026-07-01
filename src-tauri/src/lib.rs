@@ -75,6 +75,7 @@ pub fn run() {
             commands::servers,
             commands::set_favorite,
             commands::server_status,
+            commands::player_stats,
             commands::installed,
             commands::install,
             commands::sync_server,

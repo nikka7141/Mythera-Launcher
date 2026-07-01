@@ -196,6 +196,16 @@ pub async fn server_status(state: State<'_, AppState>, server_id: i64) -> AppRes
     }
 }
 
+/// Per-user roleplay progression stats (JWT-guarded → authed_json with the bearer token). On any error
+/// (not logged in / no data / offline) fall back to an empty payload so the UI degrades gracefully.
+#[tauri::command]
+pub async fn player_stats(state: State<'_, AppState>, server_id: i64) -> AppResult<Value> {
+    match http::authed_json::<Value>(state.inner(), &format!("/servers/{server_id}/me/stats"), Method::GET, None).await {
+        Ok(v) => Ok(v),
+        Err(_) => Ok(json!({ "stats": null, "updatedAt": null })),
+    }
+}
+
 #[tauri::command]
 pub async fn installed(state: State<'_, AppState>, server_id: i64) -> AppResult<bool> {
     let m: ServerManifestLite =

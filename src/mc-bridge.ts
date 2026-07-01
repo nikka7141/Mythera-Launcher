@@ -41,6 +41,11 @@ const tauriBridge: McBridge = {
   servers: () => invoke<McServer[]>('servers'),
   setFavorite: (serverId, favorite) => invoke<{ favorite: boolean }>('set_favorite', { serverId, favorite }),
   serverStatus: (serverId) => invoke<McServerStatus>('server_status', { serverId }),
+  playerStats: (serverId) =>
+    invoke<{ stats: Record<string, string | number | boolean | null> | null; updatedAt?: string | null }>(
+      'player_stats',
+      { serverId },
+    ),
   installed: (serverId) => invoke<boolean>('installed', { serverId }),
   install: (serverId) => invoke<{ installed: boolean }>('install', { serverId }),
   sync: (serverId) => invoke<McSyncResult>('sync_server', { serverId }),

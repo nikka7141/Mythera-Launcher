@@ -32,6 +32,20 @@ declare global {
     isWhitelisted?: boolean;
     // Pinned to the top of the launcher list by this user (sidecar-backed, per-user).
     isFavorite?: boolean;
+    // Roleplay progression display config (admin-curated). When enabled, the server-detail view shows a
+    // "Your progress" panel; `fields` drives which per-player stats to render + how. Placeholder is
+    // stripped server-side, so `rp` is only present on servers that opted in.
+    rp?: {
+      enabled: boolean;
+      fields: {
+        key: string;
+        label: string;
+        icon?: string;
+        format?: 'text' | 'number' | 'money' | 'badge';
+        showIf?: 'always' | 'nonzero' | 'truthy';
+        suffix?: string;
+      }[];
+    } | null;
   }
 
   interface McSyncProgress {
@@ -105,6 +119,9 @@ declare global {
     servers(): Promise<McServer[]>;
     setFavorite(serverId: number, favorite: boolean): Promise<{ favorite: boolean }>;
     serverStatus(serverId: number): Promise<McServerStatus>;
+    /** Per-user roleplay progression stats for a server (JWT-guarded). `stats` is null when the player
+     *  has no data yet (never played) or isn't logged in; keys match the server's `rp.fields[].key`. */
+    playerStats(serverId: number): Promise<{ stats: Record<string, string | number | boolean | null> | null; updatedAt?: string | null }>;
     installed(serverId: number): Promise<boolean>;
     install(serverId: number): Promise<{ installed: boolean }>;
     sync(serverId: number): Promise<McSyncResult>;

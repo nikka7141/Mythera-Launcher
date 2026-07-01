@@ -82,6 +82,149 @@ function Switch({ on, onClick }: { on: boolean; onClick: () => void }) {
   );
 }
 
+/* ---------- Roleplay progression ("შენი პროგრესი" / Your progress) ---------- */
+type RpField = NonNullable<McServer['rp']>['fields'][number];
+type RpStat = string | number | boolean | null;
+
+// field.icon key -> a lightweight glyph. Emoji keeps the panel dependency-free while covering the
+// roleplay-flavoured icon set (crown/castle/flag/…); unknown/absent keys fall back to a neutral diamond.
+const RP_ICONS: Record<string, string> = {
+  crown: '👑',
+  coins: '🪙',
+  castle: '🏰',
+  flag: '🏳️',
+  sword: '⚔️',
+  star: '⭐',
+  shield: '🛡️',
+  chain: '⛓️',
+  scroll: '📜',
+  target: '🎯',
+};
+const rpIcon = (icon?: string): string => (icon ? RP_ICONS[icon] : undefined) ?? '◆';
+
+// Role/status badge colour. The value may arrive as a Georgian label OR a raw latin id, so match both
+// case-insensitively; anything unrecognised gets the neutral pill.
+function roleBadgeTone(raw: string): 'gold' | 'purple' | 'green' | 'gray' | 'neutral' {
+  const v = raw.trim().toLowerCase();
+  if (v === 'მეფე' || v === 'mepe' || v === 'king') return 'gold';
+  if (v === 'აზნაური' || v === 'aznauri' || v === 'noble') return 'purple';
+  if (v === 'გლეხი' || v === 'glekhi' || v === 'peasant') return 'green';
+  if (v === 'ყმა' || v === 'yma' || v === 'serf') return 'gray';
+  return 'neutral';
+}
+
+/** Truthiness for showIf:'truthy' — a value counts as present unless it's null/''/'-'/'false'/'0'. */
+function isTruthyStat(v: RpStat | undefined): boolean {
+  if (v == null) return false;
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'number') return v !== 0;
+  const s = String(v).trim().toLowerCase();
+  return s !== '' && s !== '-' && s !== 'false' && s !== '0';
+}
+
+/** Integer with thousands separators (money/number formats). Non-numeric values pass through as-is. */
+function fmtNumber(v: RpStat | undefined): string {
+  const n = typeof v === 'number' ? v : Number(v);
+  if (!Number.isFinite(n)) return v == null ? '—' : String(v);
+  return Math.trunc(n).toLocaleString('en-US');
+}
+
+/** Apply a field's showIf rule against its resolved value. */
+function rpShouldShow(field: RpField, value: RpStat | undefined): boolean {
+  const rule = field.showIf ?? 'always';
+  if (rule === 'always') return true;
+  if (rule === 'nonzero') {
+    const n = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(n) && n > 0;
+  }
+  return isTruthyStat(value); // 'truthy'
+}
+
+/** Render a single stat value according to its format (money/number/badge/text). */
+function RpValue({ field, value }: { field: RpField; value: RpStat }) {
+  const fmt = field.format ?? 'text';
+  if (fmt === 'money') {
+    return (
+      <span className="rp-money">
+        {fmtNumber(value)}
+        <CoinIcon className="rp-coin" />
+      </span>
+    );
+  }
+  if (fmt === 'number') return <>{fmtNumber(value)}</>;
+  if (fmt === 'badge') {
+    if (typeof value === 'boolean') {
+      return <span className={`rp-badge ${value ? 'green' : 'neutral'}`}>{value ? '✔' : '—'}</span>;
+    }
+    const text = value == null || value === '' ? '—' : String(value);
+    return <span className={`rp-badge ${roleBadgeTone(text)}`}>{text}</span>;
+  }
+  return <>{value == null || value === '' ? '—' : String(value)}</>;
+}
+
+/**
+ * "Your progress" panel — per-user roleplay stats for the selected server. `fields` is the admin-curated
+ * display config (from `sel.rp.fields`); the values come from the JWT-guarded /me/stats endpoint. Degrades
+ * gracefully when the player has no data yet or isn't logged in (stats === null).
+ */
+function RpProgressPanel({ serverId, fields }: { serverId: number; fields: RpField[] }) {
+  const mc = window.mc;
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<Record<string, RpStat> | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setStats(null);
+    mc.playerStats(serverId)
+      .then((res) => {
+        if (alive) setStats(res?.stats ?? null);
+      })
+      .catch(() => {
+        if (alive) setStats(null); // not logged in / offline → treat as "no data yet"
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [serverId, mc]);
+
+  const tiles = stats ? fields.filter((f) => rpShouldShow(f, stats[f.key])) : [];
+
+  return (
+    <section className="rp">
+      <div className="rp-head">
+        <span className="eyebrow-line accent">
+          <StarIcon className="ic-xs" /> შენი პროგრესი
+        </span>
+        <span className="rp-sub muted small">Your progress</span>
+      </div>
+      {loading ? (
+        <p className="muted small rp-empty">იტვირთება… · Loading…</p>
+      ) : stats == null || tiles.length === 0 ? (
+        <p className="muted small rp-empty">ჯერ არ გითამაშია · no data yet</p>
+      ) : (
+        <div className="rp-grid">
+          {tiles.map((f) => (
+            <div className="stat" key={f.key}>
+              <span className="stat-ic rp-ic" aria-hidden>
+                {rpIcon(f.icon)}
+              </span>
+              <span className="stat-label">{f.label}</span>
+              <span className="stat-value">
+                <RpValue field={f} value={stats[f.key]} />
+              </span>
+              {f.suffix ? <span className="stat-sub">{f.suffix}</span> : null}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function App() {
   const mc = window.mc;
   const [user, setUser] = useState<McUser | null>(null);
@@ -1153,6 +1296,9 @@ export default function App() {
                 <span className="stat-sub">{sel.pvp === false ? 'Player vs environment' : 'Player vs player'}</span>
               </div>
             </section>
+
+            {/* roleplay progression — per-user stats, only when the server opted in (rp.enabled) */}
+            {sel?.rp?.enabled && <RpProgressPanel serverId={sel.id} fields={sel.rp.fields} />}
 
             {/* players online — real counts + (when advertised) real player faces */}
             <section className="players">

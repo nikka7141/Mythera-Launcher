@@ -916,6 +916,87 @@ input:focus {
   margin: 0;
 }
 
+/* ---- roleplay progression ("Your progress") ---- */
+.rp {
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.rp-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.rp-sub {
+  letter-spacing: 0.02em;
+}
+.rp-empty {
+  margin: 0;
+}
+.rp-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+/* emoji glyph in the reused .stat-ic frame (SVG icons expect .ic; emoji renders as text) */
+.rp-ic {
+  font-size: 18px;
+  line-height: 1;
+  color: var(--ink);
+}
+/* money value + trailing coin glyph */
+.rp-money {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.rp-coin {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+/* role / status pills — tone maps to a rank colour (see roleBadgeTone) */
+.rp-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  background: var(--surface);
+}
+.rp-badge.gold {
+  color: #f5b942;
+  border-color: rgba(245, 185, 66, 0.4);
+  background: rgba(245, 185, 66, 0.1);
+}
+.rp-badge.purple {
+  color: #b78cf0;
+  border-color: rgba(183, 140, 240, 0.4);
+  background: rgba(183, 140, 240, 0.1);
+}
+.rp-badge.green {
+  color: var(--green);
+  border-color: rgba(68, 201, 123, 0.4);
+  background: rgba(68, 201, 123, 0.1);
+}
+.rp-badge.gray {
+  color: var(--muted);
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.05);
+}
+.rp-badge.neutral {
+  color: var(--muted);
+}
+
 /* ---- launch bar ---- */
 .launchbar {
   grid-column: 2;

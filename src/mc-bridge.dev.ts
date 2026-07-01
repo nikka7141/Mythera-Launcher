@@ -189,6 +189,11 @@ export function makeDevBridge(): McBridge {
     // Real status from the backend: running/online/max + the SLP player sample with each online player's
     // real Mythera skin (resolved server-side in attachSkins). Empty list when the server is offline.
     serverStatus: (id) => api<McServerStatus>(`/servers/${id}/status`, { auth: false }),
+    // Per-user roleplay stats — AUTHENTICATED (api() defaults to auth: true), unlike serverStatus above.
+    playerStats: (id) =>
+      api<{ stats: Record<string, string | number | boolean | null> | null; updatedAt?: string | null }>(
+        `/servers/${id}/me/stats`,
+      ),
 
     installed: async (id) => localStorage.getItem(installedKey(id)) === '1',
 
