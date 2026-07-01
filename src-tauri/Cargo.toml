@@ -31,8 +31,13 @@ keyring = { version = "3", features = ["windows-native", "apple-native"] }
 dirs = "5"
 thiserror = "2"
 # Native folder picker for the Settings "Browse" button (game directory). default-features=false avoids
-# pulling an async runtime / the Linux GTK backend — the Windows native dialog is always compiled.
+# pulling an async runtime / the Linux GTK backend — the Windows/macOS native dialogs are always compiled.
 rfd = { version = "0.15", default-features = false }
+
+# Linux has no native rfd backend, so it needs one explicitly (gtk3 matches Tauri's own Linux webkit/GTK
+# stack — no extra runtime dependency for the AppImage). Windows/macOS keep the lean default above.
+[target.'cfg(target_os = "linux")'.dependencies]
+rfd = { version = "0.15", default-features = false, features = ["gtk3"] }
 
 # Smaller release binary -> smaller installer. LTO + size-opt + strip symbols. (panic=abort is omitted
 # so `cargo test --release` keeps the unwinding the test harness needs.)
