@@ -79,16 +79,54 @@ fn entry() -> AppResult<Entry> {
     Entry::new(SERVICE, ACCOUNT).map_err(|e| AppError::msg(format!("keyring: {e}")))
 }
 
+// File fallback for platforms/builds where the OS keychain is unavailable or can't read back what it
+// wrote — notably UNSIGNED macOS apps, whose Keychain ACL is bound to a signing identity they don't have.
+// Lives beside settings.json in the app data dir; user-private, plaintext (a refreshable session token).
+fn session_file() -> Option<PathBuf> {
+    dirs::data_dir().map(|d| d.join("Mythera").join("session.dat"))
+}
+
+fn file_load() -> Option<String> {
+    fs::read_to_string(session_file()?).ok()
+}
+
+fn file_save(json: &str) -> AppResult<()> {
+    let path = session_file().ok_or_else(|| AppError::msg("no data dir for session fallback"))?;
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    fs::write(&path, json).map_err(|e| AppError::msg(format!("session save: {e}")))
+}
+
+fn file_clear() {
+    if let Some(p) = session_file() {
+        let _ = fs::remove_file(p);
+    }
+}
+
+fn keychain_load() -> Option<String> {
+    entry().ok()?.get_password().ok()
+}
+
 pub fn save(session: &Session) -> AppResult<()> {
     let json = serde_json::to_string(session)?;
-    entry()?
-        .set_password(&json)
-        .map_err(|e| AppError::msg(format!("keyring save: {e}")))
+    // Prefer the OS keychain (encrypted at rest), but VERIFY the value actually round-trips — an unsigned
+    // macOS app can write to the Keychain yet fail to read it back. Only trust it when the read-back matches;
+    // otherwise persist to the file fallback so the session survives a restart.
+    let keychain_ok = entry()
+        .and_then(|e| e.set_password(&json).map_err(|err| AppError::msg(format!("keyring save: {err}"))))
+        .is_ok()
+        && keychain_load().as_deref() == Some(json.as_str());
+    if keychain_ok {
+        file_clear(); // keychain works here → don't leave a stale plaintext copy around
+    } else {
+        file_save(&json)?;
+    }
+    Ok(())
 }
 
 pub fn load() -> Option<Session> {
-    let e = entry().ok()?;
-    let json = e.get_password().ok()?;
+    let json = keychain_load().or_else(file_load)?;
     serde_json::from_str(&json).ok()
 }
 
@@ -96,4 +134,5 @@ pub fn clear() {
     if let Ok(e) = entry() {
         let _ = e.delete_credential();
     }
+    file_clear();
 }

@@ -1,6 +1,6 @@
 [package]
 name = "mythera-launcher"
-version = "1.0.18"
+version = "1.0.19"
 description = "Mythera Minecraft Launcher"
 authors = ["Mythera"]
 edition = "2021"
@@ -27,7 +27,8 @@ semver = "1"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 # Token storage in the OS keychain. Windows-only backend for now (Credential Manager); add
 # apple-native / sync-secret-service when building mac/linux.
-keyring = { version = "3", features = ["windows-native"] }
+keyring = { version = "3", features = ["windows-native", "apple-native"] }
+dirs = "5"
 thiserror = "2"
 # Native folder picker for the Settings "Browse" button (game directory). default-features=false avoids
 # pulling an async runtime / the Linux GTK backend — the Windows native dialog is always compiled.
