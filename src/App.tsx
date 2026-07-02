@@ -102,6 +102,10 @@ const RP_ICONS: Record<string, string> = {
 };
 const rpIcon = (icon?: string): string => (icon ? RP_ICONS[icon] : undefined) ?? '◆';
 
+// Strip Minecraft colour codes (§x / &x) that can ride along in a placeholder value (e.g. an Imperia rank
+// name like "§7გლეხი") — the raw code shouldn't show; the badge colour comes from roleBadgeTone instead.
+const stripMc = (s: string) => s.replace(/[§&][0-9a-fk-orA-FK-OR]/g, '').trim();
+
 // Role/status badge colour. The value may arrive as a Georgian label OR a raw latin id, so match both
 // case-insensitively; anything unrecognised gets the neutral pill.
 function roleBadgeTone(raw: string): 'gold' | 'purple' | 'green' | 'gray' | 'neutral' {
@@ -156,10 +160,10 @@ function RpValue({ field, value }: { field: RpField; value: RpStat }) {
     if (typeof value === 'boolean') {
       return <span className={`rp-badge ${value ? 'green' : 'neutral'}`}>{value ? '✔' : '—'}</span>;
     }
-    const text = value == null || value === '' ? '—' : String(value);
+    const text = value == null || value === '' ? '—' : stripMc(String(value));
     return <span className={`rp-badge ${roleBadgeTone(text)}`}>{text}</span>;
   }
-  return <>{value == null || value === '' ? '—' : String(value)}</>;
+  return <>{value == null || value === '' ? '—' : stripMc(String(value))}</>;
 }
 
 /**
