@@ -29,14 +29,15 @@ import {
 import { SkinFace } from './skin-face';
 import { SkinPreview3D } from './skin-preview-3d';
 import { closeWindow, minimizeWindow, toggleMaximizeWindow } from './window-controls';
+import { useI18n, LangToggle, type TFunc } from './i18n';
 
 /* ---------- display helpers (all derived from REAL server fields) ---------- */
-const SERVER_TYPE_LABEL: Record<string, string> = {
-  survival: 'Survival',
-  minigame: 'Minigame',
-  roleplay: 'Roleplay',
-};
-// Combat mode from the server's server.properties `pvp` flag (set in the admin Properties editor).
+const SERVER_TYPES = ['survival', 'minigame', 'roleplay'];
+// Localised server-type label (empty when the type is unknown/absent).
+const serverTypeLabel = (type: string | undefined, t: TFunc): string =>
+  type && SERVER_TYPES.includes(type) ? t(`serverType.${type}`) : '';
+// Combat mode from the server's server.properties `pvp` flag (set in the admin Properties editor). PvE/PvP
+// are universal gaming terms — left untranslated.
 const modeLabel = (s: McServer): string => (s.pvp === false ? 'PvE' : 'PvP');
 // Only Featured / In-development groups can be collapsed in the sidebar (Favorites + Public stay open).
 const COLLAPSIBLE_GROUPS = new Set(['featured', 'in_development']);
@@ -44,17 +45,14 @@ const COLLAPSIBLE_GROUPS = new Set(['featured', 'in_development']);
 const FACE_W = 36;
 const FACE_GAP = 8;
 const CHIP_W = 58;
-// Human labels for the sync phases shown above the full-width download bar.
-const PHASE_LABEL: Record<string, string> = {
-  scan: 'Scanning files',
-  download: 'Downloading',
-  cleanup: 'Cleaning up',
-  done: 'Finishing',
-};
-function heroEyebrow(s: McServer): string {
-  if (s.statusMode === 'featured') return 'Featured server';
-  if (s.statusMode === 'in_development') return 'In development';
-  return 'Selected server';
+// Localised label for a sync phase shown above the full-width download bar (falls back to "Working").
+const SYNC_PHASES = ['scan', 'download', 'cleanup', 'done'];
+const phaseLabel = (phase: string, t: TFunc): string =>
+  SYNC_PHASES.includes(phase) ? t(`phase.${phase}`) : t('lb.working');
+function heroEyebrow(s: McServer, t: TFunc): string {
+  if (s.statusMode === 'featured') return t('hero.eyebrow.featured');
+  if (s.statusMode === 'in_development') return t('hero.eyebrow.inDev');
+  return t('hero.eyebrow.selected');
 }
 /** Split the name like the design: first word on one line, the rest accented. */
 function splitTitle(name: string): [string, string] {
@@ -173,6 +171,7 @@ function RpValue({ field, value }: { field: RpField; value: RpStat }) {
  */
 function RpProgressPanel({ serverId, fields }: { serverId: number; fields: RpField[] }) {
   const mc = window.mc;
+  const { t } = useI18n();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<Record<string, RpStat> | null>(null);
 
@@ -201,14 +200,13 @@ function RpProgressPanel({ serverId, fields }: { serverId: number; fields: RpFie
     <section className="rp">
       <div className="rp-head">
         <span className="eyebrow-line accent">
-          <StarIcon className="ic-xs" /> შენი პროგრესი
+          <StarIcon className="ic-xs" /> {t('rp.title')}
         </span>
-        <span className="rp-sub muted small">Your progress</span>
       </div>
       {loading ? (
-        <p className="muted small rp-empty">იტვირთება… · Loading…</p>
+        <p className="muted small rp-empty">{t('rp.loading')}</p>
       ) : stats == null || tiles.length === 0 ? (
-        <p className="muted small rp-empty">ჯერ არ გითამაშია · no data yet</p>
+        <p className="muted small rp-empty">{t('rp.empty')}</p>
       ) : (
         <div className="rp-grid">
           {tiles.map((f) => (
@@ -231,6 +229,7 @@ function RpProgressPanel({ serverId, fields }: { serverId: number; fields: RpFie
 
 export default function App() {
   const mc = window.mc;
+  const { t } = useI18n();
   const [user, setUser] = useState<McUser | null>(null);
   const [servers, setServers] = useState<McServer[]>([]);
   const [username, setUsername] = useState('');
@@ -306,7 +305,7 @@ export default function App() {
     const offLog = mc.onLaunchLog((p) => setLastLog(p.line.trim().split('\n').pop() ?? ''));
     const offExit = mc.onLaunchExit((p) => {
       setRunningId((cur) => (cur === p.serverId ? null : cur));
-      setSrvStatus(p.serverId, `Game exited (code ${p.code ?? '?'})`);
+      setSrvStatus(p.serverId, t('status.gameExited', { code: p.code ?? '?' }));
     });
     const offUpdP = mc.onUpdateProgress((p) => setUpdPct(p.percent));
     const offUpdE = mc.onUpdateError((p) => {
@@ -360,7 +359,7 @@ export default function App() {
     try {
       await afterAuth(await mc.login({ username, password }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : typeof err === 'string' ? err : 'Login failed');
+      setError(err instanceof Error ? err.message : typeof err === 'string' ? err : t('auth.err.loginFailed'));
     }
   }
 
@@ -368,21 +367,21 @@ export default function App() {
     e.preventDefault();
     setError('');
     if (!/^[a-zA-Z0-9_]{3,16}$/.test(username)) {
-      setError('Username: 3–16 chars, letters/numbers/_ only.');
+      setError(t('auth.err.username'));
       return;
     }
     if (password.length < 8 || !/\D/.test(password)) {
-      setError('Password: at least 8 characters and not only digits.');
+      setError(t('auth.err.password'));
       return;
     }
     if (password !== confirm) {
-      setError('Passwords do not match.');
+      setError(t('auth.err.mismatch'));
       return;
     }
     try {
       await afterAuth(await mc.register({ username, password }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : typeof err === 'string' ? err : 'Registration failed');
+      setError(err instanceof Error ? err.message : typeof err === 'string' ? err : t('auth.err.registerFailed'));
     }
   }
 
@@ -403,13 +402,13 @@ export default function App() {
     try {
       const res = await mc.recoverLookup();
       if (res.accounts.length === 0) {
-        setError('No accounts were registered from your current network. Recovery only works from the connection you signed up on.');
+        setError(t('auth.err.noAccounts'));
         return;
       }
       setRecAccounts(res.accounts.map((a) => a.username));
       setRecStep('pick');
     } catch (err) {
-      setError(err instanceof Error ? err.message : typeof err === 'string' ? err : 'Lookup failed');
+      setError(err instanceof Error ? err.message : typeof err === 'string' ? err : t('auth.err.lookupFailed'));
     }
   }
 
@@ -418,18 +417,18 @@ export default function App() {
     e.preventDefault();
     setError('');
     if (password.length < 8 || !/\D/.test(password)) {
-      setError('Password: at least 8 characters and not only digits.');
+      setError(t('auth.err.password'));
       return;
     }
     if (password !== confirm) {
-      setError('Passwords do not match.');
+      setError(t('auth.err.mismatch'));
       return;
     }
     try {
       await mc.recoverReset({ username: recPicked, newPassword: password });
       setRecStep('done');
     } catch (err) {
-      setError(err instanceof Error ? err.message : typeof err === 'string' ? err : 'Reset failed');
+      setError(err instanceof Error ? err.message : typeof err === 'string' ? err : t('auth.err.resetFailed'));
     }
   }
 
@@ -451,7 +450,7 @@ export default function App() {
       setSelected((cur) => (cur != null && list.some((s) => s.id === cur) ? cur : list[0]?.id ?? null));
       refreshMeta(list);
     } catch (err) {
-      setError(err instanceof Error ? err.message : typeof err === 'string' ? err : 'Refresh failed');
+      setError(err instanceof Error ? err.message : typeof err === 'string' ? err : t('common.err.refreshFailed'));
     } finally {
       setRefreshing(false);
     }
@@ -493,7 +492,7 @@ export default function App() {
       const next = { ...cur, ...patch };
       // Persist; surface a real failure instead of silently swallowing it (so a broken save is visible).
       void mc.saveSettings(next).catch((e) =>
-        setError(e instanceof Error ? e.message : typeof e === 'string' ? e : 'Could not save settings'),
+        setError(e instanceof Error ? e.message : typeof e === 'string' ? e : t('set.err.save')),
       );
       return next;
     });
@@ -505,7 +504,7 @@ export default function App() {
       const dir = await mc.browseGameDir();
       if (dir) updateSettings({ gameDir: dir });
     } catch (e) {
-      setError(e instanceof Error ? e.message : typeof e === 'string' ? e : 'Could not open the folder picker');
+      setError(e instanceof Error ? e.message : typeof e === 'string' ? e : t('set.err.folder'));
     }
   }
 
@@ -514,30 +513,30 @@ export default function App() {
     setSkinErr('');
     setSkinMsg('');
     if (file.size > 262144) {
-      setSkinErr('Skin file must be 256 KB or smaller.');
+      setSkinErr(t('prof.skin.tooBig'));
       return;
     }
     const buf = await file.arrayBuffer();
     const bytes = new Uint8Array(buf);
     const sig = [137, 80, 78, 71, 13, 10, 26, 10];
     if (bytes.length < 24 || !sig.every((b, i) => bytes[i] === b)) {
-      setSkinErr('Skin must be a PNG image.');
+      setSkinErr(t('prof.skin.notPng'));
       return;
     }
     const dv = new DataView(buf);
     const w = dv.getUint32(16);
     const h = dv.getUint32(20);
     if (!(w === 64 && (h === 64 || h === 32))) {
-      setSkinErr(`Skin must be 64×64 (or 64×32) pixels — this is ${w}×${h}.`);
+      setSkinErr(t('prof.skin.badSize', { w, h }));
       return;
     }
     setSkinBusy(true);
     try {
       await mc.uploadSkin(Array.from(bytes));
       setUser(await mc.refreshUser());
-      setSkinMsg('Skin updated — applied in-game on your next join.');
+      setSkinMsg(t('prof.skin.updated'));
     } catch (e) {
-      setSkinErr(e instanceof Error ? e.message : typeof e === 'string' ? e : 'Skin upload failed.');
+      setSkinErr(e instanceof Error ? e.message : typeof e === 'string' ? e : t('prof.skin.failed'));
     } finally {
       setSkinBusy(false);
     }
@@ -550,7 +549,7 @@ export default function App() {
     try {
       await mc.updateNow();
     } catch (err) {
-      setUpdErr(err instanceof Error ? err.message : typeof err === 'string' ? err : 'Update failed');
+      setUpdErr(err instanceof Error ? err.message : typeof err === 'string' ? err : t('update.failed'));
       setUpdating(false);
     }
   }
@@ -559,7 +558,7 @@ export default function App() {
   function handleOpError(id: number, err: unknown, fallback: string) {
     setProgress(null);
     if (canceledRef.current.delete(id)) {
-      setSrvStatus(id, 'Canceled.');
+      setSrvStatus(id, t('status.canceled'));
     } else {
       setError(err instanceof Error ? err.message : typeof err === 'string' ? err : fallback);
       setSrvStatus(id, '');
@@ -568,7 +567,7 @@ export default function App() {
 
   async function cancelDownload(id: number) {
     canceledRef.current.add(id);
-    setSrvStatus(id, 'Canceling…');
+    setSrvStatus(id, t('status.canceling'));
     await mc.cancelSync(id).catch(() => undefined);
   }
 
@@ -576,13 +575,13 @@ export default function App() {
     setError('');
     setBusy(id);
     try {
-      setSrvStatus(id, 'Downloading client + files…');
+      setSrvStatus(id, t('status.downloadingFiles'));
       await mc.install(id);
       setProgress(null);
       setInstalled((m) => ({ ...m, [id]: true }));
-      setSrvStatus(id, 'Downloaded. Ready to play.');
+      setSrvStatus(id, t('status.downloaded'));
     } catch (err) {
-      handleOpError(id, err, 'Download failed');
+      handleOpError(id, err, t('status.err.download'));
     } finally {
       setBusy(null);
     }
@@ -593,13 +592,13 @@ export default function App() {
     setError('');
     setBusy(id);
     try {
-      setSrvStatus(id, 'Reinstalling all files…');
+      setSrvStatus(id, t('status.reinstalling'));
       await mc.install(id);
       setProgress(null);
       setInstalled((m) => ({ ...m, [id]: true }));
-      setSrvStatus(id, 'Reinstalled. Ready to play.');
+      setSrvStatus(id, t('status.reinstalled'));
     } catch (err) {
-      handleOpError(id, err, 'Reinstall failed');
+      handleOpError(id, err, t('status.err.reinstall'));
     } finally {
       setBusy(null);
     }
@@ -610,13 +609,13 @@ export default function App() {
     setError('');
     setBusy(id);
     try {
-      setSrvStatus(id, 'Verifying files…');
+      setSrvStatus(id, t('status.verifying'));
       const r = await mc.sync(id);
       setProgress(null);
       setInstalled((m) => ({ ...m, [id]: true }));
-      setSrvStatus(id, `Verified — ${r.downloaded} repaired, ${r.deleted} removed, ${r.unchanged} ok.`);
+      setSrvStatus(id, t('status.verified', { d: r.downloaded, del: r.deleted, u: r.unchanged }));
     } catch (err) {
-      handleOpError(id, err, 'Verify failed');
+      handleOpError(id, err, t('status.err.verify'));
     } finally {
       setBusy(null);
     }
@@ -626,17 +625,17 @@ export default function App() {
     setError('');
     setBusy(id);
     try {
-      setSrvStatus(id, 'Verifying files…');
+      setSrvStatus(id, t('status.verifying'));
       const r = await mc.sync(id);
       setProgress(null);
-      setSrvStatus(id, `Synced (${r.downloaded} new, ${r.deleted} removed). Launching…`);
+      setSrvStatus(id, t('status.synced', { d: r.downloaded, del: r.deleted }));
       await mc.launch(id);
       setInstalled((m) => ({ ...m, [id]: true }));
       setRunningId(id);
-      setSrvStatus(id, 'Game launched.');
+      setSrvStatus(id, t('status.launched'));
       if (settings?.closeOnPlay) minimizeWindow();
     } catch (err) {
-      handleOpError(id, err, 'Launch failed');
+      handleOpError(id, err, t('status.err.launch'));
     } finally {
       setBusy(null);
     }
@@ -653,38 +652,35 @@ export default function App() {
     const rest = servers.filter((s) => !s.isFavorite);
     const byMode = (m: McServer['statusMode']) => rest.filter((s) => (s.statusMode ?? 'published') === m);
     return [
-      { key: 'fav', label: 'Favorites', items: fav },
-      { key: 'published', label: 'Public', items: byMode('published') },
-      { key: 'featured', label: 'Featured', items: byMode('featured') },
-      { key: 'in_development', label: 'In development', items: byMode('in_development') },
+      { key: 'fav', label: t('group.fav'), items: fav },
+      { key: 'published', label: t('group.published'), items: byMode('published') },
+      { key: 'featured', label: t('group.featured'), items: byMode('featured') },
+      { key: 'in_development', label: t('group.inDev'), items: byMode('in_development') },
     ].filter((g) => g.items.length > 0);
-  }, [servers]);
+  }, [servers, t]);
 
   // Hard version gate: below minSupported the launcher is blocked until it updates.
   if (upd?.mustUpdate) {
     return (
       <main className="app">
         <div className="update-modal">
-          <h1>Update required</h1>
-          <p className="muted">
-            Your launcher (v{upd.current}) is no longer supported. Update to v{upd.latest} to continue.
-          </p>
+          <LangToggle className="lang-corner" />
+          <h1>{t('update.required.title')}</h1>
+          <p className="muted">{t('update.required.body', { current: upd.current ?? '', latest: upd.latest ?? '' })}</p>
           {updErr && <p className="error">{updErr}</p>}
           {updating ? (
             <>
               <div className="pbar">
                 <div className={`pfill${updPct === null ? ' indet' : ''}`} style={updPct === null ? undefined : { width: `${updPct}%` }} />
               </div>
-              <p className="muted small">{updPct === null ? 'Starting…' : `Downloading ${updPct}%`}</p>
+              <p className="muted small">{updPct === null ? t('update.starting') : t('update.downloading', { pct: updPct })}</p>
             </>
           ) : (
             <button className="btn lg" onClick={() => void doUpdate()}>
-              Update now
+              {t('update.now')}
             </button>
           )}
-          {!upd.packaged && (
-            <p className="muted small">(Dev build — install the packaged app to actually update.)</p>
-          )}
+          {!upd.packaged && <p className="muted small">{t('update.devBuild')}</p>}
         </div>
       </main>
     );
@@ -693,22 +689,24 @@ export default function App() {
   if (!user) {
     const onSubmit =
       authMode === 'login' ? login : authMode === 'register' ? register : recStep === 'reset' ? recoverReset : (e: FormEvent) => e.preventDefault();
-    const title = authMode === 'login' ? 'Log in' : authMode === 'register' ? 'Create account' : 'Recover account';
+    const title =
+      authMode === 'login' ? t('auth.title.login') : authMode === 'register' ? t('auth.title.register') : t('auth.title.recover');
     const sub =
       authMode === 'login'
-        ? 'Sign in to download and play on your servers.'
+        ? t('auth.sub.login')
         : authMode === 'register'
-          ? 'Create an account to download and play on your servers.'
+          ? t('auth.sub.register')
           : recStep === 'lookup'
-            ? 'No email needed — recover the account you created on this connection.'
+            ? t('auth.sub.recover.lookup')
             : recStep === 'pick'
-              ? 'Pick the account you want to recover.'
+              ? t('auth.sub.recover.pick')
               : recStep === 'reset'
-                ? `Set a new password for "${recPicked}".`
-                : 'Password updated.';
+                ? t('auth.sub.recover.reset', { name: recPicked })
+                : t('auth.sub.recover.done');
     return (
       <main className="app">
         <form className="login" onSubmit={onSubmit}>
+          <LangToggle className="lang-corner" />
           <span className="eyebrow"><img src={logoUrl} className="logo-sm" alt="" /> Mythera</span>
           <h1>{title}</h1>
           <p className="muted small login-sub">{sub}</p>
@@ -716,10 +714,10 @@ export default function App() {
 
           {authMode !== 'recover' && (
             <>
-              <input placeholder="username" value={username} onChange={(e) => setUsername(e.target.value)} required />
+              <input placeholder={t('auth.ph.username')} value={username} onChange={(e) => setUsername(e.target.value)} required />
               <input
                 type="password"
-                placeholder="password"
+                placeholder={t('auth.ph.password')}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -727,16 +725,16 @@ export default function App() {
               {authMode === 'register' && (
                 <input
                   type="password"
-                  placeholder="repeat password"
+                  placeholder={t('auth.ph.repeat')}
                   value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}
                   required
                 />
               )}
-              <button className="btn lg">{authMode === 'login' ? 'Log in' : 'Create account'}</button>
+              <button className="btn lg">{authMode === 'login' ? t('auth.btn.login') : t('auth.btn.register')}</button>
               {authMode === 'login' && (
                 <button type="button" className="linklike login-forgot" onClick={() => switchMode('recover')}>
-                  Forgot password?
+                  {t('auth.btn.forgot')}
                 </button>
               )}
             </>
@@ -744,7 +742,7 @@ export default function App() {
 
           {authMode === 'recover' && recStep === 'lookup' && (
             <button type="button" className="btn lg" onClick={() => void recoverFind()}>
-              Find my accounts
+              {t('auth.btn.find')}
             </button>
           )}
 
@@ -762,7 +760,7 @@ export default function App() {
                   }}
                 >
                   <span>{u}</span>
-                  <span className="muted small">Recover →</span>
+                  <span className="muted small">{t('auth.btn.recover')}</span>
                 </button>
               ))}
             </div>
@@ -772,7 +770,7 @@ export default function App() {
             <>
               <input
                 type="password"
-                placeholder="new password"
+                placeholder={t('auth.ph.newPassword')}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -780,25 +778,23 @@ export default function App() {
               />
               <input
                 type="password"
-                placeholder="repeat password"
+                placeholder={t('auth.ph.repeat')}
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
                 required
               />
-              <button className="btn lg">Set new password</button>
+              <button className="btn lg">{t('auth.btn.setPassword')}</button>
               <button type="button" className="linklike" onClick={() => setRecStep('pick')}>
-                ← Choose a different account
+                {t('auth.btn.chooseOther')}
               </button>
             </>
           )}
 
           {authMode === 'recover' && recStep === 'done' && (
             <>
-              <p className="muted small">
-                Password updated for <b>{recPicked}</b>. Log in with your new password.
-              </p>
+              <p className="muted small">{t('auth.done.msg', { name: recPicked })}</p>
               <button type="button" className="btn lg" onClick={() => switchMode('login')}>
-                Go to log in
+                {t('auth.btn.goLogin')}
               </button>
             </>
           )}
@@ -806,25 +802,25 @@ export default function App() {
           <p className="muted small login-switch">
             {authMode === 'login' && (
               <>
-                Don&apos;t have an account?{' '}
+                {t('auth.switch.noAccount')}{' '}
                 <button type="button" className="linklike" onClick={() => switchMode('register')}>
-                  Create one
+                  {t('auth.btn.createOne')}
                 </button>
               </>
             )}
             {authMode === 'register' && (
               <>
-                Already have an account?{' '}
+                {t('auth.switch.haveAccount')}{' '}
                 <button type="button" className="linklike" onClick={() => switchMode('login')}>
-                  Log in
+                  {t('auth.btn.login')}
                 </button>
               </>
             )}
             {authMode === 'recover' && (
               <>
-                Remembered it?{' '}
+                {t('auth.switch.remembered')}{' '}
                 <button type="button" className="linklike" onClick={() => switchMode('login')}>
-                  Back to log in
+                  {t('auth.btn.backLogin')}
                 </button>
               </>
             )}
@@ -857,9 +853,9 @@ export default function App() {
   const blocked: { kind: 'soon' | 'dev' | 'offline'; label: string } | null = !sel
     ? null
     : selComingSoon
-      ? { kind: 'soon', label: 'Coming soon' }
+      ? { kind: 'soon', label: t('blocked.soon') }
       : sel.statusMode === 'in_development' && !sel.isWhitelisted
-        ? { kind: 'dev', label: 'In development' }
+        ? { kind: 'dev', label: t('blocked.dev') }
         : null;
 
   const heroDesc = sel ? splitDescription(sel.description) : { tagline: '', body: '' };
@@ -889,7 +885,7 @@ export default function App() {
       {/* ---- full-width header (also the window drag region in the frameless build) ---- */}
       <header className="topbar" data-tauri-drag-region>
         <div className="topbar-brand" data-tauri-drag-region>
-          <button className="brand-btn" onClick={() => setView('dashboard')} title="Home">
+          <button className="brand-btn" onClick={() => setView('dashboard')} title={t('hdr.home')}>
             <img src={logoUrl} className="topbar-logo" alt="" />
             <span className="brand-name">Mythera</span>
           </button>
@@ -897,44 +893,45 @@ export default function App() {
         </div>
         <div className="topbar-spacer" data-tauri-drag-region />
         <div className="topbar-actions">
-          <span className="coins" title="Coins">
+          <span className="coins" title={t('hdr.coins')}>
             <CoinIcon className="ic" /> {user.coins}
           </span>
           <button
             className={`user-chip${view === 'profile' ? ' active' : ''}`}
             onClick={() => setView('profile')}
-            title="Profile"
+            title={t('hdr.profile')}
           >
             <SkinFace src={user.skinUrl} size={28} className="skin-face" />
             <span className="user-name">{user.username}</span>
             <span className="dot on user-dot" />
           </button>
+          <LangToggle />
           <button
             className="icon-btn"
             disabled={refreshing}
             onClick={() => void refreshAll()}
-            title="Refresh servers & account"
+            title={t('hdr.refresh')}
           >
             <RefreshIcon className={`ic${refreshing ? ' spin' : ''}`} />
           </button>
           <button
             className={`icon-btn${view === 'settings' ? ' active' : ''}`}
             onClick={() => setView((v) => (v === 'settings' ? 'dashboard' : 'settings'))}
-            title="Settings"
+            title={t('hdr.settings')}
           >
             <GearIcon className="ic" />
           </button>
-          <button className="icon-btn" onClick={() => void logout()} title="Log out">
+          <button className="icon-btn" onClick={() => void logout()} title={t('hdr.logout')}>
             <LogoutIcon className="ic" />
           </button>
           <div className="win-ctl">
-            <button className="win-btn" onClick={minimizeWindow} title="Minimize" aria-label="Minimize">
+            <button className="win-btn" onClick={minimizeWindow} title={t('hdr.minimize')} aria-label={t('hdr.minimize')}>
               <MinimizeIcon className="ic-xs" />
             </button>
-            <button className="win-btn" onClick={toggleMaximizeWindow} title="Maximize" aria-label="Maximize">
+            <button className="win-btn" onClick={toggleMaximizeWindow} title={t('hdr.maximize')} aria-label={t('hdr.maximize')}>
               <MaximizeIcon className="ic-xs" />
             </button>
-            <button className="win-btn danger" onClick={closeWindow} title="Close" aria-label="Close">
+            <button className="win-btn danger" onClick={closeWindow} title={t('hdr.close')} aria-label={t('hdr.close')}>
               <CloseIcon className="ic-xs" />
             </button>
           </div>
@@ -945,26 +942,26 @@ export default function App() {
         <section className="settings">
           <div className="settings-inner">
             <div className="settings-head">
-              <button className="icon-btn" onClick={() => setView('dashboard')} title="Back" aria-label="Back">
+              <button className="icon-btn" onClick={() => setView('dashboard')} title={t('common.back')} aria-label={t('common.back')}>
                 <ArrowLeftIcon className="ic" />
               </button>
               <span className="settings-badge"><GearIcon className="ic" /></span>
               <div className="settings-titles">
-                <h1 className="settings-title">Settings</h1>
-                <p className="settings-sub muted">Configure the launcher and game defaults.</p>
+                <h1 className="settings-title">{t('set.title')}</h1>
+                <p className="settings-sub muted">{t('set.sub')}</p>
               </div>
             </div>
 
             {settings ? (
               <>
                 <div className="set-section">
-                  <div className="set-section-head">Performance</div>
+                  <div className="set-section-head">{t('set.sec.performance')}</div>
                   <div className="set-card">
                     <div className="set-row">
                       <span className="set-ic"><CpuIcon className="ic" /></span>
                       <div className="set-text">
-                        <div className="set-name">Allocated RAM</div>
-                        <div className="set-desc muted">{ramGb} GB of {maxRamGb} GB</div>
+                        <div className="set-name">{t('set.ram.name')}</div>
+                        <div className="set-desc muted">{t('set.ram.desc', { ram: ramGb, max: maxRamGb })}</div>
                       </div>
                       <div className="set-control ram">
                         <input
@@ -981,8 +978,8 @@ export default function App() {
                     <div className="set-row">
                       <span className="set-ic"><GaugeIcon className="ic" /></span>
                       <div className="set-text">
-                        <div className="set-name">Performance mode</div>
-                        <div className="set-desc muted">Reduce launcher animations and effects</div>
+                        <div className="set-name">{t('set.perf.name')}</div>
+                        <div className="set-desc muted">{t('set.perf.desc')}</div>
                       </div>
                       <Switch on={settings.performanceMode} onClick={() => updateSettings({ performanceMode: !settings.performanceMode })} />
                     </div>
@@ -990,51 +987,59 @@ export default function App() {
                 </div>
 
                 <div className="set-section">
-                  <div className="set-section-head">Game</div>
+                  <div className="set-section-head">{t('set.sec.game')}</div>
                   <div className="set-card">
                     <div className="set-row">
                       <span className="set-ic"><MonitorIcon className="ic" /></span>
                       <div className="set-text">
-                        <div className="set-name">Launch in fullscreen</div>
-                        <div className="set-desc muted">Start Minecraft maximized</div>
+                        <div className="set-name">{t('set.fs.name')}</div>
+                        <div className="set-desc muted">{t('set.fs.desc')}</div>
                       </div>
                       <Switch on={settings.fullscreen} onClick={() => updateSettings({ fullscreen: !settings.fullscreen })} />
                     </div>
                     <div className="set-row">
                       <span className="set-ic"><MonitorIcon className="ic" /></span>
                       <div className="set-text">
-                        <div className="set-name">Close launcher on play</div>
-                        <div className="set-desc muted">Free up memory while in game</div>
+                        <div className="set-name">{t('set.close.name')}</div>
+                        <div className="set-desc muted">{t('set.close.desc')}</div>
                       </div>
                       <Switch on={settings.closeOnPlay} onClick={() => updateSettings({ closeOnPlay: !settings.closeOnPlay })} />
                     </div>
                     <div className="set-row">
                       <span className="set-ic"><FolderIcon className="ic" /></span>
                       <div className="set-text">
-                        <div className="set-name">Game directory</div>
+                        <div className="set-name">{t('set.dir.name')}</div>
                         <div className="set-desc muted set-path">{settings.gameDir}</div>
                       </div>
-                      <button className="btn ghost sm" onClick={() => void browseGameDir()}>Browse</button>
+                      <button className="btn ghost sm" onClick={() => void browseGameDir()}>{t('set.browse')}</button>
                     </div>
                   </div>
                 </div>
 
                 <div className="set-section">
-                  <div className="set-section-head">General</div>
+                  <div className="set-section-head">{t('set.sec.general')}</div>
                   <div className="set-card">
                     <div className="set-row">
                       <span className="set-ic"><GearIcon className="ic" /></span>
                       <div className="set-text">
-                        <div className="set-name">Automatic updates</div>
-                        <div className="set-desc muted">Keep mods and launcher up to date</div>
+                        <div className="set-name">{t('set.auto.name')}</div>
+                        <div className="set-desc muted">{t('set.auto.desc')}</div>
                       </div>
                       <Switch on={settings.autoUpdate} onClick={() => updateSettings({ autoUpdate: !settings.autoUpdate })} />
+                    </div>
+                    <div className="set-row">
+                      <span className="set-ic"><MonitorIcon className="ic" /></span>
+                      <div className="set-text">
+                        <div className="set-name">{t('set.lang.name')}</div>
+                        <div className="set-desc muted">{t('set.lang.desc')}</div>
+                      </div>
+                      <LangToggle />
                     </div>
                   </div>
                 </div>
               </>
             ) : (
-              <p className="muted">Loading settings…</p>
+              <p className="muted">{t('set.loading')}</p>
             )}
           </div>
         </section>
@@ -1042,38 +1047,38 @@ export default function App() {
         <section className="profile">
           <div className="profile-inner">
             <div className="settings-head">
-              <button className="icon-btn" onClick={() => setView('dashboard')} title="Back" aria-label="Back">
+              <button className="icon-btn" onClick={() => setView('dashboard')} title={t('common.back')} aria-label={t('common.back')}>
                 <ArrowLeftIcon className="ic" />
               </button>
               <span className="settings-badge"><UsersIcon className="ic" /></span>
               <div className="settings-titles">
-                <h1 className="settings-title">Profile</h1>
-                <p className="settings-sub muted">Your account and Minecraft skin.</p>
+                <h1 className="settings-title">{t('prof.title')}</h1>
+                <p className="settings-sub muted">{t('prof.sub')}</p>
               </div>
             </div>
 
             <div className="profile-grid">
               {/* left — account info */}
               <div className="profile-card">
-                <div className="set-section-head">Account</div>
+                <div className="set-section-head">{t('prof.account')}</div>
                 <div className="pf-id">
                   <SkinFace src={user.skinUrl} size={52} className="skin-face" />
                   <div>
                     <div className="pf-name">{user.username}</div>
-                    <div className="pf-state"><span className="dot on" /> Online</div>
+                    <div className="pf-state"><span className="dot on" /> {t('prof.online')}</div>
                   </div>
                 </div>
                 <div className="pf-rows">
                   <div className="pf-row">
-                    <span className="pf-k">Coins</span>
+                    <span className="pf-k">{t('prof.coins')}</span>
                     <span className="pf-v coins-v"><CoinIcon className="ic" /> {user.coins}</span>
                   </div>
                   <div className="pf-row">
-                    <span className="pf-k">Minecraft UUID</span>
+                    <span className="pf-k">{t('prof.uuid')}</span>
                     <span className="pf-v mono">{user.mcUuid}</span>
                   </div>
                   <div className="pf-row">
-                    <span className="pf-k">Account ID</span>
+                    <span className="pf-k">{t('prof.accountId')}</span>
                     <span className="pf-v mono">#{user.id}</span>
                   </div>
                 </div>
@@ -1082,11 +1087,11 @@ export default function App() {
               {/* right — ONE panel: 3D skin preview on top, drag/drop upload below */}
               <div className="profile-card skin-card">
                 <div className="skin-head">
-                  <DiamondIcon className="ic-xs" /> Your skin <DiamondIcon className="ic-xs" />
+                  <DiamondIcon className="ic-xs" /> {t('prof.skin')} <DiamondIcon className="ic-xs" />
                 </div>
                 <div className="skin-stage">
                   <SkinPreview3D src={user.skinUrl || ''} />
-                  <span className="skin-rotate">Drag to rotate</span>
+                  <span className="skin-rotate">{t('prof.rotate')}</span>
                 </div>
                 <div
                   className={`skin-drop${skinDragOver ? ' over' : ''}`}
@@ -1104,9 +1109,9 @@ export default function App() {
                   onClick={() => skinInputRef.current?.click()}
                 >
                   <span className="skin-drop-plus"><UploadIcon className="ic" /></span>
-                  <div className="skin-drop-title">{skinBusy ? 'Uploading…' : 'Add skin'}</div>
-                  <div className="skin-drop-sub">PNG skin format · 64×64</div>
-                  <div className="skin-drop-hint">drag &amp; drop or browse</div>
+                  <div className="skin-drop-title">{skinBusy ? t('prof.uploading') : t('prof.addSkin')}</div>
+                  <div className="skin-drop-sub">{t('prof.skinFormat')}</div>
+                  <div className="skin-drop-hint">{t('prof.dropHint')}</div>
                   <input
                     ref={skinInputRef}
                     type="file"
@@ -1126,7 +1131,7 @@ export default function App() {
                       skinInputRef.current?.click();
                     }}
                   >
-                    <FolderIcon className="ic" /> Browse files
+                    <FolderIcon className="ic" /> {t('prof.browseFiles')}
                   </button>
                 </div>
                 {skinErr && <p className="error small skin-feedback">{skinErr}</p>}
@@ -1140,8 +1145,8 @@ export default function App() {
       {/* ---- left sidebar: grouped server list (full height) ---- */}
       <aside className="sidebar">
         <div className="sidebar-head">
-          <span className="eyebrow-line"><DiamondIcon className="ic-xs" /> Servers</span>
-          <span className="online-count"><span className="dot on" />{onlineCount} online</span>
+          <span className="eyebrow-line"><DiamondIcon className="ic-xs" /> {t('side.servers')}</span>
+          <span className="online-count"><span className="dot on" />{t('side.online', { n: onlineCount })}</span>
         </div>
         <div className="server-list">
           {groups.map((g) => {
@@ -1168,7 +1173,7 @@ export default function App() {
               )}
               {!isCollapsed && g.items.map((s) => {
                 const st = statuses[s.id];
-                const sub = s.description?.trim() || SERVER_TYPE_LABEL[s.serverType ?? ''] || 'Minecraft server';
+                const sub = s.description?.trim() || serverTypeLabel(s.serverType, t) || t('side.serverFallback');
                 return (
                   <button
                     key={s.id}
@@ -1196,7 +1201,7 @@ export default function App() {
                       role="button"
                       tabIndex={0}
                       className={`srv-fav${s.isFavorite ? ' on' : ''}`}
-                      title={s.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                      title={s.isFavorite ? t('side.favRemove') : t('side.favAdd')}
                       onClick={(e) => {
                         e.stopPropagation();
                         void toggleFavorite(s.id);
@@ -1221,7 +1226,7 @@ export default function App() {
           {servers.length === 0 && (
             <div className="empty">
               <img src={logoUrl} className="empty-ic" alt="" />
-              <p className="muted">No servers available yet.</p>
+              <p className="muted">{t('side.empty')}</p>
             </div>
           )}
         </div>
@@ -1233,12 +1238,12 @@ export default function App() {
 
         {upd?.updateAvailable && !upd.mustUpdate && (
           <div className="update-banner">
-            <span>Launcher update available: v{upd.current} → v{upd.latest}.</span>
+            <span>{t('update.banner', { current: upd.current ?? '', latest: upd.latest ?? '' })}</span>
             {updating ? (
-              <span className="muted small">{updPct === null ? 'Updating…' : `Downloading ${updPct}%`}</span>
+              <span className="muted small">{updPct === null ? t('update.updating') : t('update.downloading', { pct: updPct })}</span>
             ) : (
               <button className="btn sm" onClick={() => void doUpdate()}>
-                Update
+                {t('update.update')}
               </button>
             )}
             {updErr && <span className="error small">{updErr}</span>}
@@ -1247,7 +1252,7 @@ export default function App() {
 
         {sel && (
           <>
-            <span className="eyebrow-line accent"><DiamondIcon className="ic-xs" /> {heroEyebrow(sel)}</span>
+            <span className="eyebrow-line accent"><DiamondIcon className="ic-xs" /> {heroEyebrow(sel, t)}</span>
 
             {/* hero */}
             <section className="hero" style={{ '--cover': sel.iconUrl ? `url("${sel.iconUrl}")` : 'none' } as CSSProperties}>
@@ -1268,11 +1273,11 @@ export default function App() {
                 ) : (
                   <button className="btn lg hero-play" disabled={ctaDisabled} onClick={onCta}>
                     {selBusy ? (
-                      selInstalled ? 'Working…' : 'Downloading…'
+                      selInstalled ? t('cta.working') : t('cta.downloading')
                     ) : selInstalled ? (
-                      <><PlayIcon className="ic" /> Play</>
+                      <><PlayIcon className="ic" /> {t('cta.play')}</>
                     ) : (
-                      <><DownloadIcon className="ic" /> Download</>
+                      <><DownloadIcon className="ic" /> {t('cta.download')}</>
                     )}
                   </button>
                 )}
@@ -1283,21 +1288,21 @@ export default function App() {
             <section className="stats">
               <div className="stat">
                 <span className="stat-ic"><CubeIcon className="ic" /></span>
-                <span className="stat-label">Version</span>
+                <span className="stat-label">{t('stat.version')}</span>
                 <span className="stat-value">{sel.mcVersion || '—'}</span>
-                <span className="stat-sub">Minecraft</span>
+                <span className="stat-sub">{t('stat.minecraft')}</span>
               </div>
               <div className="stat">
                 <span className="stat-ic"><ModeIcon className="ic" /></span>
-                <span className="stat-label">Type</span>
-                <span className="stat-value">{SERVER_TYPE_LABEL[sel.serverType ?? ''] || '—'}</span>
-                <span className="stat-sub">Game type</span>
+                <span className="stat-label">{t('stat.type')}</span>
+                <span className="stat-value">{serverTypeLabel(sel.serverType, t) || '—'}</span>
+                <span className="stat-sub">{t('stat.gameType')}</span>
               </div>
               <div className="stat">
                 <span className="stat-ic"><SwordsIcon className="ic" /></span>
-                <span className="stat-label">Mode</span>
+                <span className="stat-label">{t('stat.mode')}</span>
                 <span className="stat-value">{modeLabel(sel)}</span>
-                <span className="stat-sub">{sel.pvp === false ? 'Player vs environment' : 'Player vs player'}</span>
+                <span className="stat-sub">{sel.pvp === false ? t('stat.pve') : t('stat.pvp')}</span>
               </div>
             </section>
 
@@ -1307,7 +1312,7 @@ export default function App() {
             {/* players online — real counts + (when advertised) real player faces */}
             <section className="players">
               <div className="players-head">
-                <span className="eyebrow-line"><UsersIcon className="ic-xs" /> Players online</span>
+                <span className="eyebrow-line"><UsersIcon className="ic-xs" /> {t('players.title')}</span>
                 <span className="players-count">
                   {curOnline} <span className="muted">/ {maxOnline || '—'}</span>
                 </span>
@@ -1328,10 +1333,10 @@ export default function App() {
                 ) : (
                   <span className="muted small players-empty">
                     {selStatus?.running
-                      ? 'No player list advertised by this server.'
+                      ? t('players.noList')
                       : selStatus?.restarting
-                        ? 'Server is restarting…'
-                        : 'Server is offline.'}
+                        ? t('players.restarting')
+                        : t('players.offline')}
                   </span>
                 )}
               </div>
@@ -1353,22 +1358,22 @@ export default function App() {
                 <div className="lb-dl-head">
                   <span className="lb-dl-name">
                     {sel.name}{' '}
-                    <span className="muted">— {selProgress ? PHASE_LABEL[selProgress.phase] ?? 'Working' : selInstalled ? 'Verifying' : 'Downloading'}</span>
+                    <span className="muted">— {selProgress ? phaseLabel(selProgress.phase, t) : selInstalled ? t('lb.verifying') : t('lb.downloading')}</span>
                   </span>
-                  <span className="lb-dl-pct">{pct === null ? 'Working…' : `${pct}%`}</span>
+                  <span className="lb-dl-pct">{pct === null ? t('lb.workingDots') : `${pct}%`}</span>
                 </div>
                 <div className="pbar lg">
                   <div className={`pfill${pct === null ? ' indet' : ''}`} style={pct === null ? undefined : { width: `${pct}%` }} />
                 </div>
                 <span className="lb-dl-sub muted small">
                   {selStatusMsg}
-                  {selProgress?.total ? ` · ${selProgress.done}/${selProgress.total} files` : ''}
+                  {selProgress?.total ? ` · ${t('lb.files', { done: selProgress.done, total: selProgress.total })}` : ''}
                   {selProgress?.file ? ` · ${selProgress.file}` : ''}
                   {lastLog ? ` · ${lastLog}` : ''}
                 </span>
               </div>
-              <button className="cancel-btn" onClick={() => void cancelDownload(sel.id)} title="Cancel download">
-                <CloseIcon className="ic" /> Cancel
+              <button className="cancel-btn" onClick={() => void cancelDownload(sel.id)} title={t('lb.cancelTitle')}>
+                <CloseIcon className="ic" /> {t('lb.cancel')}
               </button>
             </div>
           ) : (
@@ -1384,23 +1389,23 @@ export default function App() {
                   <p className="lb-status">
                     <span className={`dot${selStatus?.restarting ? ' warn' : selStatus?.running ? ' on' : ' off'}`} />
                     {selComingSoon
-                      ? 'Coming soon — this server isn’t open yet.'
+                      ? t('lb.status.soon')
                       : selLocked
-                        ? 'In development — only whitelisted players can join.'
+                        ? t('lb.status.dev')
                         : selRunning
-                          ? 'Running — game launched.'
+                          ? t('lb.status.running')
                           : selRestarting
-                            ? 'Restarting… — the server is coming back up.'
+                            ? t('lb.status.restarting')
                             : selInstalled && selOffline
-                              ? 'Server looks offline — you can still try to launch.'
-                              : selStatusMsg || (selInstalled ? 'Ready to play · All files up to date' : 'Not downloaded yet')}
+                              ? t('lb.status.offline')
+                              : selStatusMsg || (selInstalled ? t('lb.status.ready') : t('lb.status.notDownloaded'))}
                   </p>
                 </div>
               </div>
 
               <div className="lb-right">
                 {selRunning ? (
-                  <span className="state-btn running"><span className="dot on" /> Running</span>
+                  <span className="state-btn running"><span className="dot on" /> {t('lb.running')}</span>
                 ) : blocked ? (
                   <span className={`state-btn ${blocked.kind}`}>
                     <span className={`dot${blocked.kind === 'offline' ? ' off' : ''}`} />
@@ -1411,24 +1416,24 @@ export default function App() {
                     {menuOpen && (
                       <div className="dropup" role="menu">
                         <button className="dropup-item" disabled={secondaryDisabled} onClick={() => void reinstall(sel.id)}>
-                          <DownloadIcon className="ic" /> Reinstall
-                          <span className="dropup-hint">re-download every file</span>
+                          <DownloadIcon className="ic" /> {t('lb.reinstall')}
+                          <span className="dropup-hint">{t('lb.reinstall.hint')}</span>
                         </button>
                         <button className="dropup-item" disabled={secondaryDisabled} onClick={() => void verify(sel.id)}>
-                          <CheckIcon className="ic" /> Verify files
-                          <span className="dropup-hint">check &amp; repair install</span>
+                          <CheckIcon className="ic" /> {t('lb.verifyFiles')}
+                          <span className="dropup-hint">{t('lb.verify.hint')}</span>
                         </button>
                       </div>
                     )}
                     <button className="launch-btn" disabled={ctaDisabled} onClick={onCta}>
-                      <span className="launch-main">{selInstalled ? 'LAUNCH' : 'DOWNLOAD'}</span>
+                      <span className="launch-main">{selInstalled ? t('lb.launch') : t('lb.download')}</span>
                       <span className="launch-ic">{selInstalled ? <PlayIcon className="ic" /> : <DownloadIcon className="ic" />}</span>
                     </button>
                     <button
                       className={`launch-caret${menuOpen ? ' open' : ''}`}
                       disabled={secondaryDisabled}
-                      title="More actions"
-                      aria-label="More actions"
+                      title={t('lb.moreActions')}
+                      aria-label={t('lb.moreActions')}
                       onClick={() => setMenuOpen((o) => !o)}
                     >
                       <ChevronDownIcon className="ic-xs" />

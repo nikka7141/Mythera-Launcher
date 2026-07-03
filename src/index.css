@@ -1316,6 +1316,7 @@ input:focus {
   padding: 24px;
 }
 .login {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1405,6 +1406,7 @@ input:focus {
   background: rgba(68, 201, 123, 0.06);
 }
 .update-modal {
+  position: relative;
   max-width: 460px;
   margin: 12vh auto;
   padding: 30px;
@@ -1413,6 +1415,48 @@ input:focus {
   border: 1px solid var(--line);
   border-radius: 18px;
   box-shadow: 0 24px 60px -30px rgba(0, 0, 0, 0.8);
+}
+
+/* ---- language toggle (KA/EN segmented pill) ---- */
+.lang-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+}
+.lang-toggle button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 4px 9px;
+  border-radius: 999px;
+  cursor: pointer;
+  line-height: 1;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+.lang-toggle button:hover:not(.on) {
+  color: var(--ink);
+}
+.lang-toggle button.on {
+  background: var(--green);
+  color: var(--green-ink);
+}
+/* corner placement inside the login form / update modal */
+.lang-corner {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 2;
 }
 .update-modal h1 {
   margin: 0 0 8px;
