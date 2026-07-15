@@ -48,6 +48,23 @@ declare global {
     } | null;
   }
 
+  /** A player's currently-active task/quest assignment (see backend TasksService.getTasksForUser). */
+  interface McServerTask {
+    id: number;
+    taskId: number;
+    name: string;
+    description: string;
+    iconUrl: string | null;
+    scheduleType: 'daily' | 'weekly' | 'custom';
+    targetValue: number;
+    progressValue: number;
+    completed: boolean;
+    rewardType: 'item' | 'privilege' | 'coins' | 'money';
+    rewardLabel: string;
+    assignedAt: string;
+    completedAt: string | null;
+  }
+
   interface McSyncProgress {
     serverId: number;
     phase: 'scan' | 'download' | 'cleanup' | 'done';
@@ -122,6 +139,8 @@ declare global {
     /** Per-user roleplay progression stats for a server (JWT-guarded). `stats` is null when the player
      *  has no data yet (never played) or isn't logged in; keys match the server's `rp.fields[].key`. */
     playerStats(serverId: number): Promise<{ stats: Record<string, string | number | boolean | null> | null; updatedAt?: string | null }>;
+    /** This player's currently-active tasks/quests on a server (daily + weekly + in-window custom ones). */
+    serverTasks(serverId: number): Promise<McServerTask[]>;
     installed(serverId: number): Promise<boolean>;
     install(serverId: number): Promise<{ installed: boolean }>;
     sync(serverId: number): Promise<McSyncResult>;

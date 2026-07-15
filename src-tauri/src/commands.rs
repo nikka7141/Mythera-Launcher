@@ -206,6 +206,16 @@ pub async fn player_stats(state: State<'_, AppState>, server_id: i64) -> AppResu
     }
 }
 
+/// This player's currently-active tasks/quests on a server (JWT-guarded). On any error (not logged in /
+/// offline) fall back to an empty list so the UI degrades gracefully, same as player_stats above.
+#[tauri::command]
+pub async fn server_tasks(state: State<'_, AppState>, server_id: i64) -> AppResult<Value> {
+    match http::authed_json::<Value>(state.inner(), &format!("/servers/{server_id}/tasks"), Method::GET, None).await {
+        Ok(v) => Ok(v),
+        Err(_) => Ok(json!([])),
+    }
+}
+
 #[tauri::command]
 pub async fn installed(state: State<'_, AppState>, server_id: i64) -> AppResult<bool> {
     let m: ServerManifestLite =

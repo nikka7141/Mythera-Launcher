@@ -997,6 +997,95 @@ input:focus {
   color: var(--muted);
 }
 
+/* ---- tasks / quests ---- */
+.task-more-btn {
+  border: none;
+  background: none;
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+}
+.task-more-btn:hover {
+  text-decoration: underline;
+}
+.task-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.task-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.task-group-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.task-row {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.task-row.done {
+  border-color: rgba(68, 201, 123, 0.4);
+  background: rgba(68, 201, 123, 0.06);
+}
+.task-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.task-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.task-done-badge {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--green);
+  background: rgba(68, 201, 123, 0.12);
+}
+.task-desc {
+  margin: 4px 0 0;
+}
+.task-bar {
+  margin-top: 8px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+.task-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--green);
+  transition: width 0.2s ease;
+}
+.task-row-foot {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.task-reward {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
 /* ---- launch bar ---- */
 .launchbar {
   grid-column: 2;

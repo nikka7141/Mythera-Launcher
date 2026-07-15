@@ -227,6 +227,116 @@ function RpProgressPanel({ serverId, fields }: { serverId: number; fields: RpFie
   );
 }
 
+const TASKS_PREVIEW_COUNT = 3;
+
+function TaskProgressBar({ value, target }: { value: number; target: number }) {
+  const pct = target > 0 ? Math.min(100, Math.round((value / target) * 100)) : 0;
+  return (
+    <div className="task-bar">
+      <div className="task-bar-fill" style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+
+function TaskRow({ tk }: { tk: McServerTask }) {
+  const { t } = useI18n();
+  return (
+    <div className={`task-row${tk.completed ? ' done' : ''}`}>
+      <div className="task-row-head">
+        <span className="task-name">{tk.name}</span>
+        {tk.completed && <span className="task-done-badge">{t('tasks.completed')}</span>}
+      </div>
+      <p className="muted small task-desc">{tk.description}</p>
+      <TaskProgressBar value={tk.progressValue} target={tk.targetValue} />
+      <div className="task-row-foot">
+        <span className="muted small">
+          {Math.min(tk.progressValue, tk.targetValue).toLocaleString()} / {tk.targetValue.toLocaleString()}
+        </span>
+        <span className="task-reward">{tk.rewardLabel}</span>
+      </div>
+    </div>
+  );
+}
+
+/** Tasks/quests for the selected server — a compact preview that expands to the full daily/weekly/custom list. */
+function TasksPanel({ serverId }: { serverId: number }) {
+  const mc = window.mc;
+  const { t } = useI18n();
+  const [tasks, setTasks] = useState<McServerTask[] | null>(null);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    setTasks(null);
+    setExpanded(false);
+    mc.serverTasks(serverId)
+      .then((r) => {
+        if (alive) setTasks(r);
+      })
+      .catch(() => {
+        if (alive) setTasks([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [serverId, mc]);
+
+  if (!tasks || tasks.length === 0) return null;
+
+  const daily = tasks.filter((x) => x.scheduleType === 'daily');
+  const weekly = tasks.filter((x) => x.scheduleType === 'weekly');
+  const custom = tasks.filter((x) => x.scheduleType === 'custom');
+
+  return (
+    <section className="rp">
+      <div className="rp-head">
+        <span className="eyebrow-line accent">
+          <StarIcon className="ic-xs" /> {t('tasks.title')}
+        </span>
+        {tasks.length > TASKS_PREVIEW_COUNT && (
+          <button className="task-more-btn" onClick={() => setExpanded((v) => !v)}>
+            {expanded ? t('tasks.showLess') : t('tasks.seeMore')}
+          </button>
+        )}
+      </div>
+      {expanded ? (
+        <div className="task-groups">
+          {daily.length > 0 && (
+            <div className="task-group">
+              <span className="task-group-label">{t('tasks.daily')}</span>
+              {daily.map((tk) => (
+                <TaskRow key={tk.id} tk={tk} />
+              ))}
+            </div>
+          )}
+          {weekly.length > 0 && (
+            <div className="task-group">
+              <span className="task-group-label">{t('tasks.weekly')}</span>
+              {weekly.map((tk) => (
+                <TaskRow key={tk.id} tk={tk} />
+              ))}
+            </div>
+          )}
+          {custom.length > 0 && (
+            <div className="task-group">
+              <span className="task-group-label">{t('tasks.custom')}</span>
+              {custom.map((tk) => (
+                <TaskRow key={tk.id} tk={tk} />
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="task-groups">
+          {tasks.slice(0, TASKS_PREVIEW_COUNT).map((tk) => (
+            <TaskRow key={tk.id} tk={tk} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function App() {
   const mc = window.mc;
   const { t } = useI18n();
@@ -1308,6 +1418,9 @@ export default function App() {
 
             {/* roleplay progression — per-user stats, only when the server opted in (rp.enabled) */}
             {sel?.rp?.enabled && <RpProgressPanel serverId={sel.id} fields={sel.rp.fields} />}
+
+            {/* tasks / quests — hides itself when the server has none active for this player */}
+            {sel && <TasksPanel serverId={sel.id} />}
 
             {/* players online — real counts + (when advertised) real player faces */}
             <section className="players">

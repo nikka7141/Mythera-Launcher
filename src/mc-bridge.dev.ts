@@ -194,6 +194,7 @@ export function makeDevBridge(): McBridge {
       api<{ stats: Record<string, string | number | boolean | null> | null; updatedAt?: string | null }>(
         `/servers/${id}/me/stats`,
       ),
+    serverTasks: (id) => api<McServerTask[]>(`/servers/${id}/tasks`),
 
     installed: async (id) => localStorage.getItem(installedKey(id)) === '1',
 

@@ -46,6 +46,7 @@ const tauriBridge: McBridge = {
       'player_stats',
       { serverId },
     ),
+  serverTasks: (serverId) => invoke<McServerTask[]>('server_tasks', { serverId }),
   installed: (serverId) => invoke<boolean>('installed', { serverId }),
   install: (serverId) => invoke<{ installed: boolean }>('install', { serverId }),
   sync: (serverId) => invoke<McSyncResult>('sync_server', { serverId }),
