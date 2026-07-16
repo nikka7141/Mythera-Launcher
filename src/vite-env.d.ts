@@ -67,7 +67,7 @@ declare global {
 
   interface McSyncProgress {
     serverId: number;
-    phase: 'scan' | 'download' | 'cleanup' | 'done';
+    phase: 'scan' | 'download' | 'cleanup' | 'done' | 'libraries' | 'assets' | 'java' | 'forge';
     file?: string;
     done: number;
     total: number;

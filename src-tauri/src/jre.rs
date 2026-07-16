@@ -65,11 +65,15 @@ pub fn resolve_java_path(user_data: &Path) -> String {
 }
 
 /// Ensure a bundled Java <major> JRE exists (download Temurin if needed). Returns the java(w) exe path.
+/// `on_progress(done_bytes, total_bytes)` fires as the JRE archive downloads (total=0 if the server sent
+/// no Content-Length — caller should treat that as indeterminate) so the UI doesn't sit frozen/silent
+/// during what can be a slow, tens-of-MB download.
 pub async fn ensure_java(
     http_client: &reqwest::Client,
     major: u32,
     user_data: &Path,
     on_log: &(dyn Fn(&str) + Send + Sync),
+    on_progress: &(dyn Fn(u64, u64) + Send + Sync),
 ) -> AppResult<String> {
     if major == 8 {
         if let Ok(p) = std::env::var("MC_JAVA_PATH") {
@@ -94,7 +98,7 @@ pub async fn ensure_java(
         "https://api.adoptium.net/v3/binary/latest/{major}/ga/{os}/{arch}/jre/hotspot/normal/eclipse"
     );
     on_log(&format!("Downloading Java {major} JRE ({os}/{arch})…"));
-    let buf = http::get_bytes(http_client, &url).await?;
+    let buf = http::get_bytes_with_progress(http_client, &url, on_progress).await?;
     tokio::fs::create_dir_all(&runtime_dir).await?;
 
     // Extract (blocking) off the async runtime. Windows ships a zip; *nix a tar.gz.

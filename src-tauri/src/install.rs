@@ -91,13 +91,57 @@ where
     Ok(())
 }
 
+/// Like `pool`, but reports (done, total) after every completed chunk so a caller with hundreds/thousands
+/// of small items (asset objects, libraries) can drive a progress bar. `f` must be `Fn` (called across
+/// multiple chunks), unlike `pool`'s single call. `on_chunk_done` is a plain borrowed closure — fine here
+/// because it's only ever invoked from this same async fn's own await points, never moved into the
+/// 'static pooled futures themselves (which is what forces `pool`'s items/futures to be 'static).
+async fn pool_with_progress<I, F, Fut>(
+    items: Vec<I>,
+    limit: usize,
+    chunk_size: usize,
+    on_chunk_done: &(dyn Fn(usize, usize) + Send + Sync),
+    f: F,
+) -> AppResult<()>
+where
+    I: Send + 'static,
+    F: Fn(I) -> Fut,
+    Fut: std::future::Future<Output = AppResult<()>> + Send + 'static,
+{
+    let total = items.len();
+    let mut done = 0usize;
+    on_chunk_done(0, total);
+    let mut buf: Vec<I> = Vec::with_capacity(chunk_size.max(1));
+    for item in items {
+        buf.push(item);
+        if buf.len() >= chunk_size.max(1) {
+            let chunk = std::mem::take(&mut buf);
+            let n = chunk.len();
+            pool(chunk, limit, &f).await?;
+            done += n;
+            on_chunk_done(done, total);
+        }
+    }
+    if !buf.is_empty() {
+        let n = buf.len();
+        pool(buf, limit, &f).await?;
+        done += n;
+        on_chunk_done(done, total);
+    }
+    Ok(())
+}
+
 /// Ensure a launchable vanilla MC client is installed (version.json, client jar, libraries + natives,
 /// assets). Idempotent. Vanilla only — Forge is a separate step.
+/// `on_progress(phase, done, total)` fires for the "libraries" and "assets" sub-phases (in chunks, not
+/// per-file — there can be thousands of asset objects) so the UI's overall bar keeps moving instead of
+/// sitting at 100% while this function does the bulk of the actual install work silently.
 pub async fn ensure_client_installed(
     http_client: &reqwest::Client,
     instance_dir: &Path,
     mc_version: &str,
     on_log: Log<'_>,
+    on_progress: &(dyn Fn(&str, usize, usize) + Send + Sync),
 ) -> AppResult<()> {
     let version_json_path = instance_dir.join("version.json");
     let client_jar = instance_dir
@@ -169,7 +213,7 @@ pub async fn ensure_client_installed(
     {
         let libs_dir = libs_dir.clone();
         let http_client = http_client.clone();
-        pool(lib_tasks, 8, move |(url, rel)| {
+        pool_with_progress(lib_tasks, 8, 4, &|done, total| on_progress("libraries", done, total), move |(url, rel)| {
             let dest = libs_dir.join(&rel);
             let http_client = http_client.clone();
             async move {
@@ -194,7 +238,7 @@ pub async fn ensure_client_installed(
     {
         let assets_dir = instance_dir.join("assets").join("objects");
         let http_client = http_client.clone();
-        pool(objects, 16, move |hash| {
+        pool_with_progress(objects, 16, 32, &|done, total| on_progress("assets", done, total), move |hash| {
             let sub = hash[..2].to_string();
             let dest = assets_dir.join(&sub).join(&hash);
             let http_client = http_client.clone();
@@ -322,6 +366,9 @@ pub fn find_forge_profile_id(instance_dir: &Path, mc_version: &str) -> Option<St
 }
 
 /// Modern Forge (1.13+) client install: run the OFFICIAL installer headlessly. Returns the forge id.
+/// `on_progress` ticks once at start and once on completion (phase="forge") — the installer subprocess
+/// has no finer-grained progress available, but even a start/end tick keeps the overall bar from looking
+/// stalled during what can be a slow patch/download step.
 pub async fn ensure_modern_forge_installed(
     http_client: &reqwest::Client,
     instance_dir: &Path,
@@ -329,6 +376,7 @@ pub async fn ensure_modern_forge_installed(
     forge_version: &str,
     java_console_path: &str,
     on_log: Log<'_>,
+    on_progress: &(dyn Fn(&str, usize, usize) + Send + Sync),
 ) -> AppResult<String> {
     if let Some(existing) = find_forge_profile_id(instance_dir, mc_version) {
         if instance_dir
@@ -338,10 +386,12 @@ pub async fn ensure_modern_forge_installed(
             .exists()
         {
             on_log("Forge already installed.");
+            on_progress("forge", 1, 1);
             return Ok(existing);
         }
     }
 
+    on_progress("forge", 0, 1);
     on_log(&format!("Downloading Forge {mc_version}-{forge_version} installer…"));
     let buffer = fetch_forge_installer(http_client, mc_version, forge_version).await?;
     tokio::fs::create_dir_all(instance_dir).await?;
@@ -370,6 +420,7 @@ pub async fn ensure_modern_forge_installed(
     let forge_id = find_forge_profile_id(instance_dir, mc_version)
         .ok_or_else(|| AppError::msg("Forge profile not found after install (installer may have failed)"))?;
     on_log(&format!("Forge {forge_id} installed."));
+    on_progress("forge", 1, 1);
     Ok(forge_id)
 }
 
@@ -416,14 +467,17 @@ fn read_zip_entry(bytes: &[u8], name: &str) -> AppResult<Option<Vec<u8>>> {
 }
 
 /// Install the Forge CLIENT for 1.7.10 by parsing the installer's install_profile.json (no GUI).
+/// `on_progress` covers the vanilla-base sub-install (via `ensure_client_installed`) plus a start/end
+/// tick around the Forge-specific work itself (phase="forge").
 pub async fn ensure_forge_installed(
     http_client: &reqwest::Client,
     instance_dir: &Path,
     mc_version: &str,
     forge_version: &str,
     on_log: Log<'_>,
+    on_progress: &(dyn Fn(&str, usize, usize) + Send + Sync),
 ) -> AppResult<()> {
-    ensure_client_installed(http_client, instance_dir, mc_version, on_log).await?; // vanilla base
+    ensure_client_installed(http_client, instance_dir, mc_version, on_log, on_progress).await?; // vanilla base
 
     let version_json_path = instance_dir.join("version.json");
     // version.json is written LAST, so its presence + Forge marker means a prior install finished.
@@ -431,11 +485,13 @@ pub async fn ensure_forge_installed(
         if let Ok(existing) = tokio::fs::read_to_string(&version_json_path).await {
             if existing.contains("FMLTweaker") {
                 on_log("Forge already installed.");
+                on_progress("forge", 1, 1);
                 return Ok(());
             }
         }
     }
 
+    on_progress("forge", 0, 1);
     on_log(&format!("Downloading Forge {mc_version}-{forge_version} installer…"));
     let installer = fetch_forge_installer(http_client, mc_version, forge_version).await?;
     let profile_bytes = read_zip_entry(&installer, "install_profile.json")?
@@ -515,5 +571,6 @@ pub async fn ensure_forge_installed(
     }
     tokio::fs::write(&version_json_path, serde_json::to_vec(&version_info_value)?).await?;
     on_log("Forge client install complete.");
+    on_progress("forge", 1, 1);
     Ok(())
 }

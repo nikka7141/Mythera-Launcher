@@ -51,18 +51,23 @@ struct Prepared {
 }
 
 /// Ensure the right client (Forge/vanilla, legacy/modern) + Java are installed. Idempotent.
+/// `on_progress(phase, done, total)` mirrors sync::SyncProgress's shape (phase/done/total) but covers the
+/// client-install sub-phases ("libraries" | "assets" | "java" | "forge") that used to run silently after
+/// the mod-jar sync reported 100% — callers should emit these through the same mc:sync-progress channel.
 async fn prepare_instance(
     st: &AppState,
     m: &ServerManifestLite,
     on_log: &(dyn Fn(&str) + Send + Sync),
+    on_progress: &(dyn Fn(&str, usize, usize) + Send + Sync),
 ) -> AppResult<Prepared> {
     let dir = st.instance_dir(&m.slug);
     let mc = if m.mc_version.is_empty() { "1.7.10".to_string() } else { m.mc_version.clone() };
 
     if is_modern(&mc) {
         let major = if m.java_version >= 8 { m.java_version } else { 17 };
-        install::ensure_client_installed(&st.http, &dir, &mc, on_log).await?;
-        let java_path = jre::ensure_java(&st.http, major, &st.user_data, on_log).await?;
+        install::ensure_client_installed(&st.http, &dir, &mc, on_log, on_progress).await?;
+        let on_progress_bytes = |done: u64, total: u64| on_progress("java", done as usize, total as usize);
+        let java_path = jre::ensure_java(&st.http, major, &st.user_data, on_log, &on_progress_bytes).await?;
         let mut profile_id = mc.clone();
         if m.loader == "forge" && !m.loader_version.is_empty() {
             profile_id = install::ensure_modern_forge_installed(
@@ -72,6 +77,7 @@ async fn prepare_instance(
                 &m.loader_version,
                 &jre::console_java(&java_path),
                 on_log,
+                on_progress,
             )
             .await?;
         } else if !m.loader.is_empty() && m.loader != "vanilla" {
@@ -82,14 +88,15 @@ async fn prepare_instance(
 
     // legacy (<= 1.12.2)
     if m.loader == "forge" && !m.loader_version.is_empty() {
-        install::ensure_forge_installed(&st.http, &dir, &mc, &m.loader_version, on_log).await?;
+        install::ensure_forge_installed(&st.http, &dir, &mc, &m.loader_version, on_log, on_progress).await?;
     } else {
         if !m.loader.is_empty() && m.loader != "vanilla" {
             on_log(&format!("[note] {} client install not supported yet — installing vanilla base only.", m.loader));
         }
-        install::ensure_client_installed(&st.http, &dir, &mc, on_log).await?;
+        install::ensure_client_installed(&st.http, &dir, &mc, on_log, on_progress).await?;
     }
-    let java_path = match jre::ensure_java(&st.http, 8, &st.user_data, on_log).await {
+    let on_progress_bytes = |done: u64, total: u64| on_progress("java", done as usize, total as usize);
+    let java_path = match jre::ensure_java(&st.http, 8, &st.user_data, on_log, &on_progress_bytes).await {
         Ok(p) => p,
         Err(_) => jre::resolve_java_path(&st.user_data),
     };
@@ -267,7 +274,10 @@ pub async fn install(app: AppHandle, state: State<'_, AppState>, server_id: i64)
     let on_log = move |line: &str| {
         let _ = app_l.emit("mc:launch-log", json!({ "serverId": server_id, "line": line }));
     };
-    prepare_instance(state.inner(), &m, &on_log).await?;
+    let on_progress_phase = |phase: &str, done: usize, total: usize| {
+        on_progress(SyncProgress { phase: phase.to_string(), file: None, done, total });
+    };
+    prepare_instance(state.inner(), &m, &on_log, &on_progress_phase).await?;
     Ok(json!({ "installed": true }))
 }
 
@@ -313,7 +323,14 @@ pub async fn launch(app: AppHandle, state: State<'_, AppState>, server_id: i64) 
     let on_log = move |line: &str| {
         let _ = app_l.emit("mc:launch-log", json!({ "serverId": server_id, "line": line }));
     };
-    let prep = prepare_instance(state.inner(), &m, &on_log).await?;
+    let app_p = app.clone();
+    let on_progress_phase = move |phase: &str, done: usize, total: usize| {
+        let _ = app_p.emit(
+            "mc:sync-progress",
+            json!({ "serverId": server_id, "phase": phase, "file": Value::Null, "done": done, "total": total }),
+        );
+    };
+    let prep = prepare_instance(state.inner(), &m, &on_log, &on_progress_phase).await?;
 
     // Arm the join ticket AFTER the (possibly long) install, right before launch.
     let ticket: Value = http::authed_json(

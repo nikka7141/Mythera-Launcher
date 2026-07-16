@@ -167,3 +167,27 @@ pub async fn get_bytes(http: &reqwest::Client, url: &str) -> AppResult<Vec<u8>> 
     }
     Ok(res.bytes().await?.to_vec())
 }
+
+/// Fetch raw bytes, reporting (downloaded, total) after each received chunk — total is 0 if the server
+/// didn't send Content-Length (caller should treat that as indeterminate). Mirrors updater.rs's
+/// download_installer streaming loop, generalized for any single large download (e.g. a JRE archive).
+pub async fn get_bytes_with_progress(
+    http: &reqwest::Client,
+    url: &str,
+    on_progress: &(dyn Fn(u64, u64) + Send + Sync),
+) -> AppResult<Vec<u8>> {
+    use futures_util::StreamExt;
+    let res = http.get(url).send().await?;
+    if !res.status().is_success() {
+        return Err(AppError::msg(format!("GET {} {}", res.status().as_u16(), url)));
+    }
+    let total = res.content_length().unwrap_or(0);
+    let mut buf: Vec<u8> = Vec::new();
+    let mut stream = res.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk?;
+        buf.extend_from_slice(&chunk);
+        on_progress(buf.len() as u64, total);
+    }
+    Ok(buf)
+}

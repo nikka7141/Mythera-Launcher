@@ -45,10 +45,46 @@ const COLLAPSIBLE_GROUPS = new Set(['featured', 'in_development']);
 const FACE_W = 36;
 const FACE_GAP = 8;
 const CHIP_W = 58;
+// Every phase the Rust side can report, in the order they actually run: scan/download/cleanup/done cover
+// the mod-jar delta sync (sync.rs); libraries/assets/java/forge cover the base client install that used
+// to run silently in the background after sync hit "done" (prepare_instance in commands.rs) — that gap
+// was the launcher looking frozen at 100% while asset objects and the JRE were still downloading.
+const PHASE_ORDER = ['scan', 'download', 'cleanup', 'done', 'libraries', 'assets', 'java', 'forge'] as const;
+// Rough share of total install time each phase takes, summing to 100 — asset objects dominate (there can
+// be thousands), the mod-jar "download" phase matters most on updates, "forge"/"java" are coarse
+// start/end ticks (no finer-grained progress available from the installer subprocess / single archive).
+const PHASE_WEIGHTS: Record<string, number> = {
+  scan: 2,
+  download: 20,
+  cleanup: 3,
+  done: 0,
+  libraries: 10,
+  assets: 55,
+  java: 8,
+  forge: 2,
+};
+// Phases whose done/total count discrete files — safe to show as "N/M files". "java" reports raw bytes
+// and "forge" is just a 0/1-1/1 start/end tick, so both would read as nonsense in that format.
+const FILE_COUNT_PHASES = new Set(['scan', 'download', 'cleanup', 'libraries', 'assets']);
 // Localised label for a sync phase shown above the full-width download bar (falls back to "Working").
-const SYNC_PHASES = ['scan', 'download', 'cleanup', 'done'];
 const phaseLabel = (phase: string, t: TFunc): string =>
-  SYNC_PHASES.includes(phase) ? t(`phase.${phase}`) : t('lb.working');
+  (PHASE_ORDER as readonly string[]).includes(phase) ? t(`phase.${phase}`) : t('lb.working');
+// Weighted overall percentage across ALL install phases (not just the current one), so e.g. finishing the
+// 37/37 mod-jar sync no longer reads as "100%" while libraries/assets/Java still have to download.
+function overallPct(p: McSyncProgress | null): number | null {
+  if (!p) return null;
+  const idx = (PHASE_ORDER as readonly string[]).indexOf(p.phase);
+  if (idx === -1) return null;
+  let acc = 0;
+  for (let i = 0; i < idx; i++) acc += PHASE_WEIGHTS[PHASE_ORDER[i]];
+  const w = PHASE_WEIGHTS[PHASE_ORDER[idx]];
+  if (w > 0) {
+    if (p.total > 0) acc += w * Math.min(1, p.done / p.total);
+    // No Content-Length on this download (total=0) — nudge forward instead of stalling in place.
+    else if (p.done > 0) acc += w * 0.5;
+  }
+  return Math.min(100, Math.round(acc));
+}
 function heroEyebrow(s: McServer, t: TFunc): string {
   if (s.statusMode === 'featured') return t('hero.eyebrow.featured');
   if (s.statusMode === 'in_development') return t('hero.eyebrow.inDev');
@@ -952,7 +988,7 @@ export default function App() {
   const selBusy = sel != null && busy === sel.id;
   const selStatusMsg = sel ? statusMap[sel.id] ?? '' : '';
   const selProgress = progress && sel && progress.serverId === sel.id ? progress : null;
-  const pct = selProgress && selProgress.total > 0 ? Math.round((selProgress.done / selProgress.total) * 100) : null;
+  const pct = overallPct(selProgress);
   const ctaDisabled = busy !== null || otherRunning || selRunning;
   // Secondary actions (reinstall/verify) must NOT run while THIS server's game holds file locks.
   const secondaryDisabled = busy !== null || selRunning;
@@ -1480,7 +1516,9 @@ export default function App() {
                 </div>
                 <span className="lb-dl-sub muted small">
                   {selStatusMsg}
-                  {selProgress?.total ? ` · ${t('lb.files', { done: selProgress.done, total: selProgress.total })}` : ''}
+                  {selProgress?.total && FILE_COUNT_PHASES.has(selProgress.phase)
+                    ? ` · ${t('lb.files', { done: selProgress.done, total: selProgress.total })}`
+                    : ''}
                   {selProgress?.file ? ` · ${selProgress.file}` : ''}
                   {lastLog ? ` · ${lastLog}` : ''}
                 </span>
