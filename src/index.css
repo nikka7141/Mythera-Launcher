@@ -1994,6 +1994,11 @@ input:focus {
 .skin-browse {
   margin-top: 9px;
 }
+.skin-remove {
+  margin: 10px 16px 0;
+  justify-content: center;
+  gap: 6px;
+}
 .pf-ok {
   margin: 0;
   color: var(--green);

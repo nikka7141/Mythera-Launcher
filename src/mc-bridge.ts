@@ -38,6 +38,7 @@ const tauriBridge: McBridge = {
   session: () => invoke<McUser | null>('session'),
   refreshUser: () => invoke<McUser>('refresh_user'),
   uploadSkin: (bytes) => invoke<{ skinUrl: string }>('upload_skin', { bytes }),
+  clearSkin: () => invoke<{ ok: boolean }>('clear_skin'),
   servers: () => invoke<McServer[]>('servers'),
   setFavorite: (serverId, favorite) => invoke<{ favorite: boolean }>('set_favorite', { serverId, favorite }),
   serverStatus: (serverId) => invoke<McServerStatus>('server_status', { serverId }),

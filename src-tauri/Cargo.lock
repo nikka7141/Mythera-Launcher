@@ -1871,7 +1871,7 @@ dependencies = [
 
 [[package]]
 name = "mythera-launcher"
-version = "1.0.23"
+version = "1.0.24"
 dependencies = [
  "dirs 5.0.1",
  "futures-util",

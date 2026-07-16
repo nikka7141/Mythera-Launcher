@@ -172,6 +172,12 @@ pub async fn upload_skin(state: State<'_, AppState>, bytes: Vec<u8>) -> AppResul
     http::authed_upload(state.inner(), "/account/skin", "file", bytes, "skin.png", "image/png").await
 }
 
+/// Delete the uploaded skin and revert in-game to the server's configured default.
+#[tauri::command]
+pub async fn clear_skin(state: State<'_, AppState>) -> AppResult<Value> {
+    http::authed_json(state.inner(), "/account/skin", Method::DELETE, None).await
+}
+
 #[tauri::command]
 pub async fn refresh_user(state: State<'_, AppState>) -> AppResult<Value> {
     let user: Value = http::authed_json(state.inner(), "/auth/me", Method::GET, None).await?;

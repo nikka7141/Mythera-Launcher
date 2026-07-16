@@ -23,6 +23,7 @@ import {
   StarIcon,
   StarOutlineIcon,
   SwordsIcon,
+  TrashIcon,
   UploadIcon,
   UsersIcon,
 } from './icons';
@@ -688,6 +689,23 @@ export default function App() {
     }
   }
 
+  // Delete the uploaded skin and revert in-game to the server's configured default.
+  async function onSkinClear() {
+    if (!window.confirm(t('prof.skin.removeConfirm'))) return;
+    setSkinErr('');
+    setSkinMsg('');
+    setSkinBusy(true);
+    try {
+      await mc.clearSkin();
+      setUser(await mc.refreshUser());
+      setSkinMsg(t('prof.skin.removed'));
+    } catch (e) {
+      setSkinErr(e instanceof Error ? e.message : typeof e === 'string' ? e : t('prof.skin.failed'));
+    } finally {
+      setSkinBusy(false);
+    }
+  }
+
   async function doUpdate() {
     setUpdErr('');
     setUpdating(true);
@@ -1280,6 +1298,11 @@ export default function App() {
                     <FolderIcon className="ic" /> {t('prof.browseFiles')}
                   </button>
                 </div>
+                {user.skinUrl && (
+                  <button className="btn sm ghost skin-remove" disabled={skinBusy} onClick={() => void onSkinClear()}>
+                    <TrashIcon className="ic" /> {t('prof.skin.remove')}
+                  </button>
+                )}
                 {skinErr && <p className="error small skin-feedback">{skinErr}</p>}
                 {skinMsg && <p className="pf-ok small skin-feedback">{skinMsg}</p>}
               </div>

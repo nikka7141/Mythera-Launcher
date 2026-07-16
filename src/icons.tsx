@@ -264,3 +264,13 @@ export function RefreshIcon(props: IconProps) {
     </svg>
   );
 }
+
+// Trash — remove/delete (e.g. remove uploaded skin, back to default)
+export function TrashIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" {...base} {...props}>
+      <path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-9 0 1 13a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2l1-13" />
+      <path d="M10 11v6M14 11v6" />
+    </svg>
+  );
+}

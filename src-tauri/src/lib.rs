@@ -72,6 +72,7 @@ pub fn run() {
             commands::session,
             commands::refresh_user,
             commands::upload_skin,
+            commands::clear_skin,
             commands::servers,
             commands::set_favorite,
             commands::server_status,

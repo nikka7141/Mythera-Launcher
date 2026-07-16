@@ -133,6 +133,8 @@ declare global {
     refreshUser(): Promise<McUser>;
     /** Upload a 64×64 (or 64×32) PNG skin (raw bytes). Returns the new public skin URL. */
     uploadSkin(bytes: number[]): Promise<{ skinUrl: string }>;
+    /** Delete the uploaded skin and revert in-game to the server's configured default. */
+    clearSkin(): Promise<{ ok: boolean }>;
     servers(): Promise<McServer[]>;
     setFavorite(serverId: number, favorite: boolean): Promise<{ favorite: boolean }>;
     serverStatus(serverId: number): Promise<McServerStatus>;

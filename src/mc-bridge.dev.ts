@@ -183,6 +183,7 @@ export function makeDevBridge(): McBridge {
       if (!res.ok) throw new Error((body?.error?.message as string) ?? res.statusText);
       return body as { skinUrl: string };
     },
+    clearSkin: () => api<{ ok: boolean }>('/account/skin', { method: 'DELETE' }),
     servers: () => api<McServer[]>('/servers'),
     setFavorite: (id, favorite) =>
       api<{ favorite: boolean }>(`/servers/${id}/favorite`, { method: favorite ? 'PUT' : 'DELETE' }),
